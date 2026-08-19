@@ -52,15 +52,17 @@ if (-not $SkipDeps -and (Get-Command winget -ErrorAction SilentlyContinue)) {
 }
 
 # 2. Setup Destination Directory
-if (-not (Test-Path -Path $InstallDir)) {
-    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+$ResolvedInstallDir = if (-not [string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir } elseif ($env:LOCALAPPDATA) { "$env:LOCALAPPDATA\Programs\aws-auth" } else { "$env:USERPROFILE\.aws-auth\bin" }
+
+if (-not (Test-Path -LiteralPath $ResolvedInstallDir)) {
+    New-Item -ItemType Directory -Path $ResolvedInstallDir -Force | Out-Null
 }
 
-$ExePath = Join-Path $InstallDir "aws-auth.exe"
+$ExePath = Join-Path $ResolvedInstallDir "aws-auth.exe"
 
 # 3. Obtain Binary (Local dist/ or Download from GitHub)
-$LocalDist = Join-Path $PSScriptRoot "dist\aws-auth.exe"
-if (Test-Path $LocalDist) {
+$LocalDist = if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) { Join-Path $PSScriptRoot "dist\aws-auth.exe" } else { $null }
+if ($LocalDist -and (Test-Path -LiteralPath $LocalDist)) {
     Write-Host "`n📂 Copying local build from dist\aws-auth.exe..." -ForegroundColor Yellow
     Copy-Item -Path $LocalDist -Destination $ExePath -Force
 } else {
@@ -79,15 +81,15 @@ if (Test-Path $LocalDist) {
 
 # 4. Add to User PATH if not already present
 $UserPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
-if ($UserPath -notlike "*$InstallDir*") {
-    Write-Host "`n⚙️  Adding $InstallDir to User PATH..." -ForegroundColor Yellow
-    $NewPath = if ([string]::IsNullOrWhiteSpace($UserPath)) { $InstallDir } else { "$UserPath;$InstallDir" }
+if ($null -eq $UserPath -or $UserPath -notlike "*$ResolvedInstallDir*") {
+    Write-Host "`n⚙️  Adding $ResolvedInstallDir to User PATH..." -ForegroundColor Yellow
+    $NewPath = if ([string]::IsNullOrWhiteSpace($UserPath)) { $ResolvedInstallDir } else { "$UserPath;$ResolvedInstallDir" }
     [Environment]::SetEnvironmentVariable("Path", $NewPath, [EnvironmentVariableTarget]::User)
 }
 
 # Update PATH in current PowerShell session
-if ($env:Path -notlike "*$InstallDir*") {
-    $env:Path = "$env:Path;$InstallDir"
+if ($env:Path -notlike "*$ResolvedInstallDir*") {
+    $env:Path = "$env:Path;$ResolvedInstallDir"
 }
 
 # 5. Success Banner & Instructions
