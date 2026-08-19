@@ -71,12 +71,25 @@
 
 Download the latest pre-compiled binary from [GitHub Releases](https://github.com/N0mansky/aws-auth/releases/latest):
 
+#### Windows (PowerShell 1-Liner)
+Run in PowerShell to automatically download the binary and configure your PATH:
+```powershell
+irm https://raw.githubusercontent.com/N0mansky/aws-auth/main/install.ps1 | iex
+```
+
+*Or manual download via PowerShell:*
+```powershell
+curl.exe -L https://github.com/N0mansky/aws-auth/releases/latest/download/aws-auth-windows-amd64.exe -o aws-auth.exe
+```
+
+#### Linux (x86_64)
 ```bash
-# Linux (x86_64)
 curl -L https://github.com/N0mansky/aws-auth/releases/latest/download/aws-auth-linux-amd64 -o aws-auth
 chmod +x aws-auth && sudo mv aws-auth /usr/local/bin/
+```
 
-# macOS (Universal)
+#### macOS (Universal)
+```bash
 curl -L https://github.com/N0mansky/aws-auth/releases/latest/download/aws-auth-macos-universal -o aws-auth
 chmod +x aws-auth && sudo mv aws-auth /usr/local/bin/
 ```
@@ -93,8 +106,9 @@ pip install git+https://github.com/N0mansky/aws-auth.git
 git clone https://github.com/N0mansky/aws-auth.git
 cd aws-auth
 
-./install.sh     # Linux / macOS / WSL2
-.\install.bat    # Windows
+./install.sh                      # Linux / macOS / WSL2
+powershell .\install.ps1          # Windows (PowerShell)
+.\install.bat                     # Windows (Command Prompt)
 ```
 
 ---

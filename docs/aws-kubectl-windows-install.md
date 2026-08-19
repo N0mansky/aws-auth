@@ -2,11 +2,25 @@
 
 This guide provides step-by-step instructions to install the AWS Command Line Interface (AWS CLI) and `kubectl` (Kubernetes CLI) on Windows.
 
+## ⚡ Quickest Automated Setup (Recommended)
+
+Open **PowerShell** and run this single command to automatically install `aws-auth`, AWS CLI, Session Manager Plugin, and `kubectl` and configure your PATH:
+
+```powershell
+irm https://raw.githubusercontent.com/N0mansky/aws-auth/main/install.ps1 | iex
+```
+
+---
+
+## Manual Step-by-Step Installation
+
+If you prefer to install each component manually, follow the sections below.
+
 ---
 
 ## Prerequisites
 - Windows 10 or later
-- Administrator access
+- Administrator access (for manual MSI installers)
 - Internet connection
 
 ---
