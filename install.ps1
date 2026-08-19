@@ -11,21 +11,18 @@ $ErrorActionPreference = "Stop"
 Write-Host "`n⚡ AWS-Auth Windows Quick Installer" -ForegroundColor Cyan
 Write-Host "====================================" -ForegroundColor DarkGray
 
-# 1. Initialize Paths & Options (Safe for both file execution and irm | iex)
-if ($null -eq $InstallDir -or [string]::IsNullOrWhiteSpace($InstallDir)) {
-    if ($env:LOCALAPPDATA) {
-        $InstallDir = "$env:LOCALAPPDATA\Programs\aws-auth"
-    } else {
-        $InstallDir = "$env:USERPROFILE\.aws-auth\bin"
-    }
+# 1. Target Directory & Executable Path
+$TargetFolder = if ($env:LOCALAPPDATA) {
+    "$env:LOCALAPPDATA\Programs\aws-auth"
+} else {
+    "$env:USERPROFILE\.aws-auth\bin"
 }
 
-if ($null -eq $ReleaseTag -or [string]::IsNullOrWhiteSpace($ReleaseTag)) {
-    $ReleaseTag = "latest"
-}
+$BinaryPath = "$TargetFolder\aws-auth.exe"
+$LatestReleaseUrl = "https://github.com/N0mansky/aws-auth/releases/latest/download/aws-auth-windows-amd64.exe"
 
 # 2. Check Optional CLI Prerequisites (via winget if available)
-if (-not $SkipDeps -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+if (Get-Command winget -ErrorAction SilentlyContinue) {
     Write-Host "`n🔍 Checking prerequisites..." -ForegroundColor Yellow
 
     # AWS CLI
@@ -53,59 +50,51 @@ if (-not $SkipDeps -and (Get-Command winget -ErrorAction SilentlyContinue)) {
     }
 }
 
-# 3. Setup Target Installation Directory
-if (-not (Test-Path $InstallDir)) {
-    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+# 3. Ensure Target Directory Exists
+if (-not (Test-Path -LiteralPath $TargetFolder)) {
+    [System.IO.Directory]::CreateDirectory($TargetFolder) | Out-Null
 }
-
-$ExePath = "$InstallDir\aws-auth.exe"
 
 # 4. Check for Local Binary or Download from GitHub Releases
-$FoundLocal = $false
+$InstalledFromLocal = $false
 if (-not [string]::IsNullOrEmpty($PSScriptRoot)) {
-    $LocalCandidate = "$PSScriptRoot\dist\aws-auth.exe"
-    if (Test-Path $LocalCandidate) {
+    $LocalDistFile = "$PSScriptRoot\dist\aws-auth.exe"
+    if (Test-Path -LiteralPath $LocalDistFile) {
         Write-Host "`n📂 Copying local build from dist\aws-auth.exe..." -ForegroundColor Yellow
-        Copy-Item -Path $LocalCandidate -Destination $ExePath -Force
-        $FoundLocal = $true
+        Copy-Item -LiteralPath $LocalDistFile -Destination $BinaryPath -Force
+        $InstalledFromLocal = $true
     }
 }
 
-if (-not $FoundLocal) {
-    $DownloadUrl = if ($ReleaseTag -eq "latest") {
-        "https://github.com/N0mansky/aws-auth/releases/latest/download/aws-auth-windows-amd64.exe"
-    } else {
-        "https://github.com/N0mansky/aws-auth/releases/download/$ReleaseTag/aws-auth-windows-amd64.exe"
-    }
-
+if (-not $InstalledFromLocal) {
     Write-Host "`n⬇️  Downloading latest aws-auth binary from GitHub Releases..." -ForegroundColor Yellow
-    Write-Host "   URL: $DownloadUrl" -ForegroundColor DarkGray
+    Write-Host "   URL: $LatestReleaseUrl" -ForegroundColor DarkGray
     
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-    Invoke-WebRequest -Uri $DownloadUrl -OutFile $ExePath -UseBasicParsing
+    Invoke-WebRequest -Uri $LatestReleaseUrl -OutFile $BinaryPath -UseBasicParsing
 }
 
 # 5. Add Target Directory to User PATH if not present
-$CurrentUserPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
-if ($null -eq $CurrentUserPath) {
-    $CurrentUserPath = ""
+$UserPathValue = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
+if ($null -eq $UserPathValue) {
+    $UserPathValue = ""
 }
 
-if ($CurrentUserPath -notlike "*$InstallDir*") {
-    Write-Host "`n⚙️  Adding $InstallDir to User PATH..." -ForegroundColor Yellow
-    $NewUserPath = if ([string]::IsNullOrWhiteSpace($CurrentUserPath)) { $InstallDir } else { "$CurrentUserPath;$InstallDir" }
-    [Environment]::SetEnvironmentVariable("Path", $NewUserPath, [EnvironmentVariableTarget]::User)
+if ($UserPathValue -notlike "*$TargetFolder*") {
+    Write-Host "`n⚙️  Adding $TargetFolder to User PATH..." -ForegroundColor Yellow
+    $UpdatedUserPath = if ([string]::IsNullOrWhiteSpace($UserPathValue)) { $TargetFolder } else { "$UserPathValue;$TargetFolder" }
+    [Environment]::SetEnvironmentVariable("Path", $UpdatedUserPath, [EnvironmentVariableTarget]::User)
 }
 
 # Update current session PATH immediately
-if ($env:Path -notlike "*$InstallDir*") {
-    $env:Path = "$env:Path;$InstallDir"
+if ($env:Path -notlike "*$TargetFolder*") {
+    $env:Path = "$env:Path;$TargetFolder"
 }
 
 # 6. Verification & Output
 Write-Host "`n============================================================" -ForegroundColor Green
 Write-Host "🎉 aws-auth installed successfully!" -ForegroundColor Green
-Write-Host "   Binary Location: $ExePath" -ForegroundColor White
+Write-Host "   Binary Location: $BinaryPath" -ForegroundColor White
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host "`nTo get started:" -ForegroundColor Yellow
 Write-Host "  1. Restart your terminal (PowerShell / Command Prompt / Windows Terminal)" -ForegroundColor White
