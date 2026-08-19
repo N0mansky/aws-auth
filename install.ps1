@@ -62,18 +62,13 @@ $ExePath = "$InstallDir\aws-auth.exe"
 
 # 4. Check for Local Binary or Download from GitHub Releases
 $FoundLocal = $false
-try {
-    if ($MyInvocation -and $MyInvocation.MyCommand -and $MyInvocation.MyCommand.Path) {
-        $ScriptFolder = Split-Path -Parent $MyInvocation.MyCommand.Path
-        $Candidate = "$ScriptFolder\dist\aws-auth.exe"
-        if (Test-Path $Candidate) {
-            Write-Host "`n📂 Copying local build from dist\aws-auth.exe..." -ForegroundColor Yellow
-            Copy-Item -Path $Candidate -Destination $ExePath -Force
-            $FoundLocal = $true
-        }
+if (-not [string]::IsNullOrEmpty($PSScriptRoot)) {
+    $LocalCandidate = "$PSScriptRoot\dist\aws-auth.exe"
+    if (Test-Path $LocalCandidate) {
+        Write-Host "`n📂 Copying local build from dist\aws-auth.exe..." -ForegroundColor Yellow
+        Copy-Item -Path $LocalCandidate -Destination $ExePath -Force
+        $FoundLocal = $true
     }
-} catch {
-    $FoundLocal = $false
 }
 
 if (-not $FoundLocal) {
