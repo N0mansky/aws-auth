@@ -1,252 +1,220 @@
-# AWS SSO Authentication Tool (`aws-auth`)
+<div align="center">
 
-A modular Python command-line tool for automating AWS SSO (Single Sign-On) authentication, credential caching, and AWS profile management with built-in EC2 and EKS integration.
+# ⚡ AWS-Auth
 
-## Features
+### Fast, Intelligent AWS SSO Authentication & Model Context Protocol (MCP) Server
 
-- 🔐 **Automated SSO Login**: Fast interactive SSO authentication opening in your default system browser (including native Windows browser launch from WSL2).
-- 🎯 **Account & Role Selection**: Interactive selection of AWS accounts and IAM roles.
-- 💾 **Credential Caching**: Caches SSO tokens securely in `~/.aws-auth/` to avoid unnecessary logins.
-- 🚀 **AWS Profile Management**: Automatically updates AWS credentials file (`~/.aws/credentials`) and allows quick profile switching.
-- 💻 **EC2 & EKS Integration**:
-  - Direct connection to EC2 instances via AWS SSM Session Manager.
-  - Quick cluster discovery and kubeconfig configuration for Amazon EKS.
-- 📦 **Multiple Installation Modes**: Standalone executable (via PyInstaller) or standard Python package installation (`pip`).
+[![CI](https://github.com/N0mansky/aws-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/N0mansky/aws-auth/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/N0mansky/aws-auth?color=blue&logo=github)](https://github.com/N0mansky/aws-auth/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![MCP Ready](https://img.shields.io/badge/MCP-Server%20Ready-purple.svg)](https://modelcontextprotocol.io/)
 
----
+**Eliminate AWS SSO login fatigue.** Zero configuration boilerplate, smart role prioritization, atomic credential caching, and native AI pair-programming integration.
 
-## Prerequisites
-
-- **Python 3.8+**
-- **AWS CLI v2** (installed automatically by `install.sh` / `install.bat` if missing)
-- **AWS SSM Session Manager Plugin** (optional, for SSM terminal access to EC2)
-- **kubectl** (optional, for EKS management)
+[Quick Start](#-quick-start) •
+[Why aws-auth?](#-why-aws-auth-vs-alternatives) •
+[AI / MCP Integration](#-ai-agent-integration-model-context-protocol) •
+[Features](#-key-features) •
+[Documentation](#-documentation)
 
 ---
 
-## Installation
+</div>
 
-### Option 1: Binary Build & Install (Recommended for CLI use)
+```text
+  ┌───────────────────────┐       ┌────────────────────────┐       ┌───────────────────────┐
+  │  IAM Identity Center  │ ────> │       aws-auth         │ ────> │  ~/.aws/credentials   │
+  │     (AWS SSO OIDC)    │       │  (Smart Role Selector) │       │ (Strict 0600 POSIX)   │
+  └───────────────────────┘       └───────────┬────────────┘       └───────────┬───────────┘
+                                              │                                │
+                                  ┌───────────▼────────────┐       ┌───────────▼───────────┐
+                                  │   MCP Server (stdio)   │       │ Terraform / K8s / CLI │
+                                  │ (Claude / Cursor / AI) │       │ (Instant Compatibility)│
+                                  └────────────────────────┘       └───────────────────────┘
+```
+
+---
+
+## 💡 Why `aws-auth` vs Alternatives?
+
+| Feature | `aws-auth` | Official `aws sso login` | `granted` / `assume` | `aws-vault` |
+| :--- | :---: | :---: | :---: | :---: |
+| **Zero-Config Account Discovery** | ✅ **Automatic** | ❌ Requires manual `~/.aws/config` | ⚠️ Partial | ❌ Manual |
+| **Model Context Protocol (MCP)** | ✅ **Native built-in** | ❌ None | ❌ None | ❌ None |
+| **1-Second MRU / Pinned Logins** | ✅ **Smart Prioritization** | ❌ None | ⚠️ History prompt | ❌ None |
+| **Real-time Substring & Alias Filter** | ✅ **Instant typing** | ❌ None | ✅ Yes | ❌ None |
+| **Direct `~/.aws/credentials` Sync** | ✅ **Atomic & `0600`** | ❌ Token cache only | ⚠️ Shell wrapper | ⚠️ Keychain wrapper |
+| **Legacy & GUI Tool Compatibility** | ✅ **100% Out of Box** | ⚠️ Many tools fail | ⚠️ Requires wrapper | ⚠️ Requires wrapper |
+| **WSL2 -> Windows Browser Bridge** | ✅ **Automatic** | ❌ Fails / manual copy | ⚠️ Partial | ❌ No |
+| **EC2 SSM & EKS Context Switching** | ✅ **Built-in** | ❌ Separate tools | ❌ Separate tools | ❌ No |
+
+👉 **Read the full [Feature Comparison Guide](docs/COMPARISON.md)**.
+
+---
+
+## ✨ Key Features
+
+- ⚡ **Zero-Boilerplate Discovery**: No need to maintain hundreds of lines in `~/.aws/config`. Enter your SSO Start URL once, and all authorized accounts and roles are loaded dynamically.
+- ⭐ **Smart Role Prioritization (MRU)**: Automatically pins your most recently used roles (e.g. `QA Admin`, `Prod Admin`) to `#1` and `#2`. Pressing `Enter` logs you in within **1 second**.
+- 🔍 **Interactive Substring Search**: Type any keyword (`prod`, `qa`, `admin`, `gpu`, `eks`) at the selection prompt to instantly filter dozens of accounts.
+- 🤖 **Native Model Context Protocol (MCP) Server**: Expose AWS profile switching, caller identity, and EC2/EKS exploration to LLM pair programmers (Claude Desktop, Cursor, Antigravity, Gemini).
+- 🔒 **Enterprise-Grade Security**: Strict POSIX `0600` file permissions, atomic file replacement (`os.replace`), and 300-second expiration safety margins.
+- 🌐 **WSL2 Seamless Browser Bridge**: Automatically detects WSL2 and opens authorization URLs directly in your Windows host browser.
+- ☸️ **DevOps Acceleration**: Instant EC2 SSM shell sessions and 1-click Amazon EKS kubeconfig context switching.
+
+---
+
+## 📦 Installation
+
+### Option 1: Standalone Binary (Recommended)
+
+Download the latest pre-compiled binary from [GitHub Releases](https://github.com/N0mansky/aws-auth/releases/latest):
 
 ```bash
-# Clone the repository
-git clone <repository-url>
+# Linux (x86_64)
+curl -L https://github.com/N0mansky/aws-auth/releases/latest/download/aws-auth-linux-amd64 -o aws-auth
+chmod +x aws-auth && sudo mv aws-auth /usr/local/bin/
+
+# macOS (Universal)
+curl -L https://github.com/N0mansky/aws-auth/releases/latest/download/aws-auth-macos-universal -o aws-auth
+chmod +x aws-auth && sudo mv aws-auth /usr/local/bin/
+```
+
+### Option 2: Install via pip
+
+```bash
+pip install git+https://github.com/N0mansky/aws-auth.git
+```
+
+### Option 3: Clone & Install from Source
+
+```bash
+git clone https://github.com/N0mansky/aws-auth.git
 cd aws-auth
 
-# Run the installation script
-chmod +x install.sh
-./install.sh
-```
-
-On Windows:
-```cmd
-install.bat
-```
-
-### Option 2: Pip / Virtual Environment
-
-```bash
-# Install in editable mode
-pip install -e .
-
-# Or install with dev dependencies
-pip install -e ".[dev]"
+./install.sh     # Linux / macOS / WSL2
+.\install.bat    # Windows
 ```
 
 ---
 
-## Usage
+## 🚀 Quick Start
 
-### 1. Interactive Authentication & Smart Selection (Default)
+### 1. Interactive Login
 
 ```bash
 aws-auth
-# or: python -m aws_auth
 ```
 
-- **⭐ Recent First (MRU)**: Automatically pins your most recently used accounts/roles to the top (`#1`, `#2`).
-- **⚡ Instant Enter**: Pressing `Enter` automatically selects the `#1` default option.
-- **🔍 Substring Filter**: Type any keyword (e.g. `qa`, `prod`, `release`, `gpu`, `admin`) to instantly filter the list. Type `r` to reset.
-- **🏷️ Account Aliases & Pinned Accounts**: Customize aliases in `~/.aws-auth/config.json`:
-  ```json
-  {
-    "preferred_accounts": ["Production", "Staging"],
-    "aliases": {
-      "123456789012": "PROD",
-      "987654321098": "QA"
-    }
-  }
-  ```
+```text
+Available account-role combinations (Showing 1-10 of 18):
++-----+------------------------------+-----------------+------------------------------+-------------+
+| #   | Account                      | Account ID      | Role                         | Region      |
++-----+------------------------------+-----------------+------------------------------+-------------+
+| 1   | ⭐ Production-App (PROD)        | (111222333444)  | AdministratorAccess     | us-east-1   |
+| 2   | ⭐ Staging-Web (QA)          | (555666777888)  | AdministratorAccess     | us-east-1   |
+| 3   | Analytics-Data                  | (999888777666)  | AdministratorAccess     | us-east-1   |
+...
+Select number 1-10 (default: 1) (type keyword to filter): [ENTER]
 
-### 2. Configuration Setup
+✅ Profile 'production-app-admin' set as default in ~/.aws/credentials.
+```
+
+### 2. Configure Portal & Custom Aliases
 
 ```bash
-# Configure or update your SSO Start URL and Region
 aws-auth --configure
 ```
 
-### 3. Profile Management
-
-```bash
-# Interactive profile management menu
-aws-auth --manage
-
-# List existing profiles
-aws-auth --list-profiles
-
-# Switch active default profile
-aws-auth --switch-profile
-
-# Set a specific profile as default
-aws-auth --set-default my-profile
-
-# Delete a profile
-aws-auth --delete old-profile
-```
-
-### 4. EC2 Management & SSM Connection
-
-```bash
-# Authenticate and list EC2 instances (connect directly via SSM)
-aws-auth --list-ec2
-
-# List EC2 instances in a specific region
-aws-auth --list-ec2 --region us-west-2
-
-# Use existing credentials without re-authenticating
-aws-auth --list-ec2 --no-auth
-```
-
-### 5. EKS Cluster Configuration
-
-```bash
-# Authenticate and configure EKS clusters
-aws-auth --list-eks
-
-# Configure EKS in specific region without re-auth
-aws-auth --list-eks qa-profile --no-auth --region us-west-2
+Customize environment labels and preferred accounts in `~/.aws-auth/config.json`:
+```json
+{
+  "sso_start_url": "https://my-company.awsapps.com/start",
+  "sso_region": "us-east-1",
+  "preferred_accounts": ["Staging-Web", "Production-App"],
+  "aliases": {
+    "555666777888": "QA",
+    "111222333444": "PROD"
+  }
+}
 ```
 
 ---
 
-## 🤖 AI Agent & MCP (Model Context Protocol) Integration
+## 🤖 AI Agent Integration (Model Context Protocol)
 
-`aws-auth` includes a first-class **Model Context Protocol (MCP)** server that allows AI agents (e.g. Claude Desktop, Antigravity IDE, Cursor, Claude Code) to inspect AWS profiles, switch accounts, check credential validity, export session environment variables, and inspect EC2/EKS resources.
+`aws-auth` runs as a high-performance **MCP Server** over stdio.
 
-### 1. Launch MCP Server
-
-Run directly with CLI or Python:
-```bash
-aws-auth --mcp
-# or: aws-auth-mcp
-# or: python -m aws_auth.mcp_server
-```
-
-### 2. Configure MCP Client
-
-Add `aws-auth` to your IDE or client MCP configuration file (e.g. `~/.gemini/config/mcp_config.json` or `claude_desktop_config.json`):
+### Add to Claude Desktop (`claude_desktop_config.json`) or Cursor:
 
 ```json
 {
   "mcpServers": {
     "aws-auth": {
-      "command": "/path/to/aws-auth/venv/bin/python",
-      "args": ["-m", "aws_auth.mcp_server"],
-      "cwd": "/path/to/aws-auth"
+      "command": "aws-auth",
+      "args": ["--mcp"]
     }
   }
 }
 ```
 
-### 3. Available MCP Tools for AI Agents
+### What AI Assistants Can Do with `aws-auth`:
+- Check active AWS Account, Region, and IAM Role ARN (`aws_get_caller_identity`).
+- Switch active AWS profile (`aws_switch_profile`) without human intervention.
+- Inspect running EC2 instances and Amazon EKS clusters (`aws_list_ec2_instances`, `aws_list_eks_clusters`).
+- Update local Kubernetes context (`aws_update_kubeconfig`).
 
-| MCP Tool | Description |
-| :--- | :--- |
-| `aws_list_profiles` | Lists all local AWS profiles, current default profile, and regions. |
-| `aws_switch_profile` | Sets target profile as default in `~/.aws/credentials` and returns identity. |
-| `aws_get_caller_identity` | Retrieves current AWS Account ID, ARN, and UserId via STS. |
-| `aws_ensure_credentials` | Checks credential validity; automatically refreshes token in background if expired. |
-| `aws_get_session_env` | Returns unmasked temporary `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` for subprocesses. |
-| `aws_list_ec2_instances` | Returns structured JSON list of EC2 instances with state, tags, and IPs. |
-| `aws_list_eks_clusters` | Lists EKS clusters in a region with optional kubeconfig configuration. |
-| `aws_update_kubeconfig` | Configures local kubeconfig context for an active cluster. |
+👉 **Read the full [MCP Setup & Tool Reference Guide](docs/MCP_GUIDE.md)**.
 
 ---
 
-## 💻 Headless & Scripting Usage
-
-For shell scripts and non-interactive CI/CD or agent pipelines:
+## 🛠️ CLI Command Reference
 
 ```bash
-# Output JSON format
+# Core Authentication
+aws-auth                     # Interactive SSO login & smart role switch
+aws-auth --configure         # Interactive SSO portal setup
+aws-auth --identity          # Show current STS caller identity
+aws-auth --refresh-cache     # Force refresh remote account/role metadata
+
+# Profile Management
+aws-auth --list-profiles     # List all stored AWS profiles
+aws-auth --switch-profile    # Switch active default profile
+aws-auth --set-default NAME  # Set specific profile as default
+aws-auth --delete NAME       # Delete profile credentials
+
+# Resource Discovery & DevOps
+aws-auth --list-ec2          # List EC2 instances and connect via SSM
+aws-auth --list-eks          # List EKS clusters and update kubeconfig
+
+# Scripting & Headless Automation
 aws-auth --list-profiles --json
 aws-auth --identity --json
-aws-auth --set-default dev-profile --json
-aws-auth --list-ec2 --no-auth --json
-aws-auth --list-eks --no-auth --json
+eval $(aws-auth --export-env prod-profile)  # Export AWS keys to current shell
 
-# Export credentials directly to current shell
-eval $(aws-auth --export-env dev-profile)
-aws s3 ls
-```
-
-### AWS `credential_process` Integration
-
-You can configure AWS CLI, Boto3, or Terraform to automatically source credentials via `aws-auth`:
-
-In `~/.aws/config`:
-```ini
-[profile my-dev-profile]
-credential_process = aws-auth --credential-process my-dev-profile
+# AWS credential_process standard
+aws-auth --credential-process my-profile
 ```
 
 ---
 
-## Project Structure
+## 📚 Documentation
 
-```
-aws-auth/
-├── pyproject.toml              # Standard Python package configuration
-├── requirements.txt            # Core runtime dependencies
-├── requirements-dev.txt        # Development and build dependencies
-├── aws-auth.py                 # Script launcher
-├── install.sh                  # Linux/macOS setup and build script
-├── install.bat                 # Windows setup and build script
-├── aws_auth/                   # Core Python package
-│   ├── __init__.py
-│   ├── __main__.py             # Enables `python -m aws_auth`
-│   ├── cli.py                  # Command-line interface & argument parser
-│   ├── auth_manager.py         # SSO authentication orchestrator
-│   ├── caller_identity.py      # STS caller identity helper
-│   ├── config.py               # Centralized configuration
-│   ├── credentials_manager.py  # ~/.aws/credentials file management
-│   ├── ec2_manager.py          # EC2 listing and SSM terminal connections
-│   ├── eks_manager.py          # EKS cluster discovery and kubeconfig setup
-│   ├── local_browser_manager.py# System & WSL2 browser launcher
-│   ├── profile_manager.py      # AWS profile switcher and manager
-│   ├── sso_client.py           # AWS SSO OIDC client interactions
-│   ├── token_manager.py        # Token caching and lifecycle management
-│   └── user_interface.py       # Rich terminal UI & prompts
-├── docs/                       # Additional setup & architecture docs
-└── tests/                      # Unit tests
-```
+- 📊 [Comparison with AWS CLI, Granted & AWS-Vault](docs/COMPARISON.md)
+- 🤖 [Model Context Protocol (MCP) Guide](docs/MCP_GUIDE.md)
+- 🐧 [WSL2 Setup & Windows Integration Guide](docs/WSL2_SETUP.md)
+- 💻 [Linux Detailed Installation](docs/aws-kubectl-linux-install.md)
+- 🪟 [Windows Detailed Installation](docs/aws-kubectl-windows-install.md)
 
 ---
 
-## Development & Testing
+## 🤝 Contributing
 
-Run unit tests:
-```bash
-python3 -m unittest discover tests
-```
-
-Build standalone executable locally:
-```bash
-pyinstaller aws-auth.spec
-```
+Contributions are welcome! Please check out [CONTRIBUTING.md](CONTRIBUTING.md) for details on setting up a development environment and running tests.
 
 ---
 
-## License
+## 📄 License
 
-MIT License. See [LICENSE](LICENSE) for details.
+This project is licensed under the [MIT License](LICENSE).

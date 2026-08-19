@@ -47,7 +47,7 @@ class TestSecurityAndCaching(unittest.TestCase):
         self.assertTrue(os.path.exists(self.credentials_path))
         
         # Check permissions on POSIX systems
-        if hasattr(os, 'stat'):
+        if os.name != 'nt' and hasattr(os, 'stat'):
             file_stat = os.stat(self.credentials_path)
             mode = stat.S_IMODE(file_stat.st_mode)
             self.assertEqual(mode & 0o777, 0o600)
@@ -63,7 +63,7 @@ class TestSecurityAndCaching(unittest.TestCase):
         token_file = os.path.join(self.cache_dir, "sso_access_token.json")
         self.assertTrue(os.path.exists(token_file))
 
-        if hasattr(os, 'stat'):
+        if os.name != 'nt' and hasattr(os, 'stat'):
             file_stat = os.stat(token_file)
             mode = stat.S_IMODE(file_stat.st_mode)
             self.assertEqual(mode & 0o777, 0o600)
