@@ -11,8 +11,18 @@ import subprocess
 import logging
 import platform
 from typing import Optional
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+
+def is_valid_url(url: str) -> bool:
+    """Validate that the URL has a safe http/https scheme and a network location."""
+    try:
+        parsed = urlparse(url)
+        return parsed.scheme in ('http', 'https') and bool(parsed.netloc)
+    except Exception:
+        return False
 
 
 def is_wsl() -> bool:
@@ -138,6 +148,10 @@ def open_url_in_browser(url: str) -> bool:
     Returns:
         True if browser was opened successfully, False otherwise
     """
+    if not is_valid_url(url):
+        logger.warning(f"⚠️  Invalid or unsafe URL rejected: {url}")
+        return False
+
     if is_wsl():
         logger.info("🌐 Detected WSL2 - opening Windows browser...")
         if open_browser_wsl2(url):

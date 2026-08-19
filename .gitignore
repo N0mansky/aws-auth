@@ -5,15 +5,28 @@ __pycache__/
 
 # AWS Auth local credentials and tokens
 .aws-auth/
+.aws/
 *.token
 *.credentials
 *.pem
 *.key
 *.cert
 *.crt
+*.pfx
+*.p12
+*.id_rsa
+*.id_ed25519
+id_rsa*
+id_ed25519*
 config.json
 client_cache.json
 sso_access_token.json
+cached_token_*.json
+secrets.json
+credentials.json
+.env
+.env.*
+*.env
 
 # C extensions
 *.so

@@ -1,0 +1,12 @@
+#!/bin/sh
+# aws-auth credential pre-commit check
+python3 scripts/check_credentials.py --staged
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "❌ Pre-commit check failed: Secrets or credentials detected."
+    echo "   Please remove the secrets or add '# pragma: allowlist secret' if it is a false positive."
+    exit 1
+fi
+exit 0

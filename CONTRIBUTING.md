@@ -15,12 +15,25 @@ Thank you for your interest in contributing to `aws-auth`!
    python3 -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
-4. **Install development dependencies**:
+4. **Install development dependencies and pre-commit hook**:
    ```bash
    pip install -r requirements.txt
    pip install -r requirements-dev.txt
    pip install -e .
+   python scripts/check_credentials.py --install-hook
    ```
+
+## Security & Pre-commit Credential Scanner
+
+To prevent accidental leakage of AWS keys, tokens, or private keys, this repo includes a built-in pre-commit credential scanner:
+```bash
+# Scan staged files manually
+python scripts/check_credentials.py --staged
+
+# Scan all files
+python scripts/check_credentials.py --all
+```
+For legitimate test fixtures or mock strings, add `# pragma: allowlist secret` at the end of the line.
 
 ## Running Tests
 

@@ -652,7 +652,7 @@ class UserInterface:
             try:
                 created_str = cluster['created_at'].strftime('%Y-%m-%d %H:%M:%S UTC')
                 print(f"Created: {created_str}")
-            except:
+            except (AttributeError, ValueError, TypeError):
                 pass
         
         # Show VPC info if available
