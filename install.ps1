@@ -1,28 +1,30 @@
-<#
-.SYNOPSIS
-    Quick installer script for aws-auth on Windows.
-.DESCRIPTION
-    Downloads and installs the latest pre-compiled aws-auth.exe binary from GitHub Releases,
-    adds it to the User PATH, and verifies installation.
-    Can also install optional dependencies (AWS CLI, kubectl, Session Manager Plugin) via winget.
-.EXAMPLE
-    irm https://raw.githubusercontent.com/N0mansky/aws-auth/main/install.ps1 | iex
-    powershell -ExecutionPolicy Bypass -File .\install.ps1
-#>
-
-[CmdletBinding()]
-param(
-    [string]$InstallDir = "$env:LOCALAPPDATA\Programs\aws-auth",
-    [string]$ReleaseTag = "latest",
-    [switch]$SkipDeps
-)
+# ==============================================================================
+# ⚡ AWS-Auth Windows Quick Installer
+# ==============================================================================
+# Usage:
+#   irm https://raw.githubusercontent.com/N0mansky/aws-auth/main/install.ps1 | iex
+#   powershell -ExecutionPolicy Bypass -File .\install.ps1
+# ==============================================================================
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "`n⚡ AWS-Auth Windows Quick Installer" -ForegroundColor Cyan
 Write-Host "====================================" -ForegroundColor DarkGray
 
-# 1. Install / Verify Dependencies via winget (if available and not skipped)
+# 1. Initialize Paths & Options (Safe for both file execution and irm | iex)
+if ($null -eq $InstallDir -or [string]::IsNullOrWhiteSpace($InstallDir)) {
+    if ($env:LOCALAPPDATA) {
+        $InstallDir = "$env:LOCALAPPDATA\Programs\aws-auth"
+    } else {
+        $InstallDir = "$env:USERPROFILE\.aws-auth\bin"
+    }
+}
+
+if ($null -eq $ReleaseTag -or [string]::IsNullOrWhiteSpace($ReleaseTag)) {
+    $ReleaseTag = "latest"
+}
+
+# 2. Check Optional CLI Prerequisites (via winget if available)
 if (-not $SkipDeps -and (Get-Command winget -ErrorAction SilentlyContinue)) {
     Write-Host "`n🔍 Checking prerequisites..." -ForegroundColor Yellow
 
@@ -51,21 +53,30 @@ if (-not $SkipDeps -and (Get-Command winget -ErrorAction SilentlyContinue)) {
     }
 }
 
-# 2. Setup Destination Directory
-$ResolvedInstallDir = if (-not [string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir } elseif ($env:LOCALAPPDATA) { "$env:LOCALAPPDATA\Programs\aws-auth" } else { "$env:USERPROFILE\.aws-auth\bin" }
-
-if (-not (Test-Path -LiteralPath $ResolvedInstallDir)) {
-    New-Item -ItemType Directory -Path $ResolvedInstallDir -Force | Out-Null
+# 3. Setup Target Installation Directory
+if (-not (Test-Path $InstallDir)) {
+    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 }
 
-$ExePath = Join-Path $ResolvedInstallDir "aws-auth.exe"
+$ExePath = "$InstallDir\aws-auth.exe"
 
-# 3. Obtain Binary (Local dist/ or Download from GitHub)
-$LocalDist = if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) { Join-Path $PSScriptRoot "dist\aws-auth.exe" } else { $null }
-if ($LocalDist -and (Test-Path -LiteralPath $LocalDist)) {
-    Write-Host "`n📂 Copying local build from dist\aws-auth.exe..." -ForegroundColor Yellow
-    Copy-Item -Path $LocalDist -Destination $ExePath -Force
-} else {
+# 4. Check for Local Binary or Download from GitHub Releases
+$FoundLocal = $false
+try {
+    if ($MyInvocation -and $MyInvocation.MyCommand -and $MyInvocation.MyCommand.Path) {
+        $ScriptFolder = Split-Path -Parent $MyInvocation.MyCommand.Path
+        $Candidate = "$ScriptFolder\dist\aws-auth.exe"
+        if (Test-Path $Candidate) {
+            Write-Host "`n📂 Copying local build from dist\aws-auth.exe..." -ForegroundColor Yellow
+            Copy-Item -Path $Candidate -Destination $ExePath -Force
+            $FoundLocal = $true
+        }
+    }
+} catch {
+    $FoundLocal = $false
+}
+
+if (-not $FoundLocal) {
     $DownloadUrl = if ($ReleaseTag -eq "latest") {
         "https://github.com/N0mansky/aws-auth/releases/latest/download/aws-auth-windows-amd64.exe"
     } else {
@@ -79,20 +90,24 @@ if ($LocalDist -and (Test-Path -LiteralPath $LocalDist)) {
     Invoke-WebRequest -Uri $DownloadUrl -OutFile $ExePath -UseBasicParsing
 }
 
-# 4. Add to User PATH if not already present
-$UserPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
-if ($null -eq $UserPath -or $UserPath -notlike "*$ResolvedInstallDir*") {
-    Write-Host "`n⚙️  Adding $ResolvedInstallDir to User PATH..." -ForegroundColor Yellow
-    $NewPath = if ([string]::IsNullOrWhiteSpace($UserPath)) { $ResolvedInstallDir } else { "$UserPath;$ResolvedInstallDir" }
-    [Environment]::SetEnvironmentVariable("Path", $NewPath, [EnvironmentVariableTarget]::User)
+# 5. Add Target Directory to User PATH if not present
+$CurrentUserPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
+if ($null -eq $CurrentUserPath) {
+    $CurrentUserPath = ""
 }
 
-# Update PATH in current PowerShell session
-if ($env:Path -notlike "*$ResolvedInstallDir*") {
-    $env:Path = "$env:Path;$ResolvedInstallDir"
+if ($CurrentUserPath -notlike "*$InstallDir*") {
+    Write-Host "`n⚙️  Adding $InstallDir to User PATH..." -ForegroundColor Yellow
+    $NewUserPath = if ([string]::IsNullOrWhiteSpace($CurrentUserPath)) { $InstallDir } else { "$CurrentUserPath;$InstallDir" }
+    [Environment]::SetEnvironmentVariable("Path", $NewUserPath, [EnvironmentVariableTarget]::User)
 }
 
-# 5. Success Banner & Instructions
+# Update current session PATH immediately
+if ($env:Path -notlike "*$InstallDir*") {
+    $env:Path = "$env:Path;$InstallDir"
+}
+
+# 6. Verification & Output
 Write-Host "`n============================================================" -ForegroundColor Green
 Write-Host "🎉 aws-auth installed successfully!" -ForegroundColor Green
 Write-Host "   Binary Location: $ExePath" -ForegroundColor White
