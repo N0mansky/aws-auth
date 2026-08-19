@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   build-binaries:
@@ -39,7 +41,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
-          pip install pyinstaller
 
       - name: Build executable with PyInstaller
         run: |
@@ -58,7 +59,7 @@ jobs:
           path: release_assets/${{ matrix.artifact_name }}
 
   publish-release:
-    name: Create GitHub Release
+    name: Scan Artifacts & Publish Release
     needs: build-binaries
     runs-on: ubuntu-latest
     steps:
@@ -70,16 +71,36 @@ jobs:
         with:
           path: release_assets
 
-      - name: Flatten release assets
+      - name: Prepare release assets directory
         run: |
           mkdir -p dist_release
           find release_assets -type f -exec cp {} dist_release/ \;
           ls -la dist_release/
 
-      - name: Create Release
+      - name: Run Trivy vulnerability scan on release artifacts
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: 'dist_release'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+      - name: Generate SHA-256 Checksums
+        working-directory: dist_release
+        run: |
+          sha256sum aws-auth-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Attest Build Provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist_release/*'
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist_release/*
+          files: |
+            dist_release/*
           generate_release_notes: true
           draft: false
           prerelease: false

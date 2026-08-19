@@ -224,7 +224,7 @@ exit 0
 """
     hook_path.write_text(hook_content, encoding="utf-8")
     try:
-        os.chmod(hook_path, 0o755)
+        os.chmod(hook_path, 0o755)  # nosec B103
     except Exception:
         pass
 
@@ -237,7 +237,7 @@ exit 0
         git_hook_file = git_hooks_dir / "pre-commit"
         git_hook_file.write_text(hook_content, encoding="utf-8")
         try:
-            os.chmod(git_hook_file, 0o755)
+            os.chmod(git_hook_file, 0o755)  # nosec B103
         except Exception:
             pass
 
