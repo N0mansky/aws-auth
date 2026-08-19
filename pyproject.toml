@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aws-auth"
+version = "1.0.1"
+description = "AWS SSO Authentication and Profile Management Tool"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    { name = "N0mansky" }
+]
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "boto3>=1.26.0",
+    "requests>=2.31.0",
+    "mcp>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pyinstaller>=5.13.0",
+]
+
+[project.scripts]
+aws-auth = "aws_auth.cli:main"
+aws-auth-mcp = "aws_auth.mcp_server:main"
+
+[tool.setuptools.packages.find]
+include = ["aws_auth*"]
