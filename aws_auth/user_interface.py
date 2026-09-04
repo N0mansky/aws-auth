@@ -13,20 +13,57 @@ class UserInterface:
     """Handles user interactions and input prompts."""
     
     @staticmethod
-    def prompt_choice(prompt: str, max_choice: int) -> int:
-        """Prompt user for a choice between 1 and max_choice, return 0-indexed value."""
+    def prompt_choice(
+        prompt: str,
+        max_choice: int,
+        default: Optional[int] = 1,
+        allow_quit: bool = True
+    ) -> Optional[int]:
+        """Prompt user for a choice between 1 and max_choice, return 0-indexed value or None if quit.
+        
+        Args:
+            prompt: Prompt text to display.
+            max_choice: Maximum valid choice number.
+            default: Default choice if user presses Enter (None if no default).
+            allow_quit: Whether typing 'q', 'quit', 'exit', 'cancel', '0' returns None.
+            
+        Returns:
+            0-indexed integer choice, or None if user chose to quit/cancel.
+        """
+        hints = []
+        if default is not None:
+            hints.append(f"default: {default}")
+        if allow_quit:
+            hints.append("'q' to quit")
+        
+        hint_str = f" ({', '.join(hints)})" if hints else ""
+        full_prompt = f"{prompt}{hint_str}: "
+        
         while True:
             try:
-                user_input = input(f"{prompt} (default: 1): ").strip()
-                choice = int(user_input) if user_input else 1
+                user_input = input(full_prompt).strip()
+                if not user_input:
+                    if default is not None:
+                        return default - 1
+                    else:
+                        quit_msg = " or 'q' to quit" if allow_quit else ""
+                        print(f"Please enter a number between 1 and {max_choice}{quit_msg}.")
+                        continue
+                
+                if allow_quit and user_input.lower() in ('q', 'quit', 'exit', 'cancel', '0'):
+                    return None
+                
+                choice = int(user_input)
                 if 1 <= choice <= max_choice:
                     return choice - 1
-                logger.info(f"Please enter a number between 1 and {max_choice}")
+                quit_msg = " or 'q' to quit" if allow_quit else ""
+                print(f"Please enter a number between 1 and {max_choice}{quit_msg}.")
             except ValueError:
-                logger.info("Invalid input. Please enter a number.")
-            except KeyboardInterrupt:
-                logger.info("\nOperation cancelled by user.")
-                sys.exit(0)
+                quit_msg = " or 'q' to quit." if allow_quit else "."
+                print(f"Invalid input. Please enter a number{quit_msg}")
+            except (KeyboardInterrupt, EOFError):
+                print("\nOperation cancelled by user.")
+                return None
     
     @staticmethod
     def get_credentials() -> Tuple[str, str]:
@@ -284,6 +321,7 @@ class UserInterface:
                 nav_hints.append("'r'=reset filter")
             else:
                 nav_hints.append("type keyword to filter")
+            nav_hints.append("'q'=quit")
                 
             hints_str = f" ({', '.join(nav_hints)})" if nav_hints else ""
             default_hint = f" (default: {start_idx + 1})"
@@ -301,7 +339,10 @@ class UserInterface:
             
             # Handle commands
             cmd = user_input.lower()
-            if cmd == 'n' and current_page < total_pages:
+            if cmd in ('q', 'quit', 'exit'):
+                print("\nOperation cancelled by user.")
+                sys.exit(0)
+            elif cmd == 'n' and current_page < total_pages:
                 current_page += 1
                 continue
             elif cmd == 'p' and current_page > 1:
@@ -429,11 +470,16 @@ class UserInterface:
             if default_profile and profile_name == default_profile:
                 display_name = f"{profile_name} * (default)"
             print(f"{idx}. {display_name}")
+        print("0. Cancel / Quit (or 'q')")
         
         try:
-            choice = UserInterface.prompt_choice("Select profile to use", len(sorted_profiles))
+            choice = UserInterface.prompt_choice("Select profile to use", len(sorted_profiles), default=None, allow_quit=True)
+            if choice is None:
+                print("Operation cancelled.")
+                return None
             return sorted_profiles[choice]
         except (KeyboardInterrupt, EOFError):
+            print("\nOperation cancelled.")
             return None
     
     @staticmethod
@@ -447,11 +493,16 @@ class UserInterface:
         sorted_profiles = sorted(profiles)
         for idx, profile_name in enumerate(sorted_profiles, 1):
             print(f"{idx}. {profile_name}")
+        print("0. Cancel / Quit (or 'q')")
         
         try:
-            choice = UserInterface.prompt_choice("Select profile to set as default", len(sorted_profiles))
+            choice = UserInterface.prompt_choice("Select profile to set as default", len(sorted_profiles), default=None, allow_quit=True)
+            if choice is None:
+                print("Operation cancelled.")
+                return None
             return sorted_profiles[choice]
         except (KeyboardInterrupt, EOFError):
+            print("\nOperation cancelled.")
             return None
     
     @staticmethod
@@ -468,9 +519,13 @@ class UserInterface:
         sorted_profiles = sorted(deletable_profiles)
         for idx, profile_name in enumerate(sorted_profiles, 1):
             print(f"{idx}. {profile_name}")
+        print("0. Cancel / Quit (or 'q')")
         
         try:
-            choice = UserInterface.prompt_choice("Select profile to delete", len(sorted_profiles))
+            choice = UserInterface.prompt_choice("Select profile to delete", len(sorted_profiles), default=None, allow_quit=True)
+            if choice is None:
+                print("Deletion cancelled.")
+                return None
             selected_profile = sorted_profiles[choice]
             
             # Confirmation
@@ -481,6 +536,7 @@ class UserInterface:
                 print("Deletion cancelled.")
                 return None
         except (KeyboardInterrupt, EOFError):
+            print("\nDeletion cancelled.")
             return None
     
     @staticmethod
@@ -491,17 +547,19 @@ class UserInterface:
         print("2. List existing profiles")
         print("3. Set profile as default")
         print("4. Delete profile")
-        print("5. Exit")
+        print("5. Exit (or 'q')")
         
         while True:
             try:
-                choice = input("Select an option (1-5): ").strip()
+                choice = input("Select an option (1-5, or 'q' to quit): ").strip().lower()
                 if choice in ['1', '2', '3', '4', '5']:
                     return choice
-                print("Please enter a number between 1 and 5.")
+                if choice in ['q', 'quit', 'exit', '0']:
+                    return '5'
+                print("Please select a valid option (1-5 or 'q' to quit).")
             except (KeyboardInterrupt, EOFError):
                 print("\nExiting...")
-                return '5'
+                return '5' 
     
     @staticmethod
     def display_ec2_instances(instances: List[Dict[str, Any]], region: str) -> None:
@@ -556,10 +614,15 @@ class UserInterface:
         if not instances:
             return None
         
+        print("0. Cancel / Quit (or 'q')")
         try:
-            choice = UserInterface.prompt_choice("Select an instance to get connection commands", len(instances))
+            choice = UserInterface.prompt_choice("Select an instance to get connection commands", len(instances), default=None, allow_quit=True)
+            if choice is None:
+                print("Operation cancelled.")
+                return None
             return instances[choice]
         except (KeyboardInterrupt, EOFError):
+            print("\nOperation cancelled.")
             return None
     
     @staticmethod
@@ -628,10 +691,15 @@ class UserInterface:
         if not clusters:
             return None
         
+        print("0. Cancel / Quit (or 'q')")
         try:
-            choice = UserInterface.prompt_choice("Select a cluster to connect", len(clusters))
+            choice = UserInterface.prompt_choice("Select a cluster to connect", len(clusters), default=None, allow_quit=True)
+            if choice is None:
+                print("Operation cancelled.")
+                return None
             return clusters[choice]
         except (KeyboardInterrupt, EOFError):
+            print("\nOperation cancelled.")
             return None
     
     @staticmethod

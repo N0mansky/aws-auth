@@ -1,6 +1,8 @@
 """Tests for aws_auth.cli."""
 
 import unittest
+from unittest.mock import patch
+from aws_auth.user_interface import UserInterface
 from aws_auth.cli import create_parser
 from aws_auth import __version__
 
@@ -53,12 +55,57 @@ class TestCLIParser(unittest.TestCase):
         args = self.parser.parse_args(["--configure"])
         self.assertTrue(args.configure)
 
+    def test_delete_arguments(self):
+        args = self.parser.parse_args(["--delete"])
+        self.assertEqual(args.delete, "")
+        args2 = self.parser.parse_args(["--delete", "staging"])
+        self.assertEqual(args2.delete, "staging")
+
+    def test_set_default_arguments(self):
+        args = self.parser.parse_args(["--set-default"])
+        self.assertEqual(args.set_default, "")
+        args2 = self.parser.parse_args(["--set-default", "staging"])
+        self.assertEqual(args2.set_default, "staging")
+
     def test_json_and_non_interactive_arguments(self):
         args = self.parser.parse_args(["--list-profiles", "--json", "--non-interactive"])
         self.assertTrue(args.list_profiles)
         self.assertTrue(args.json)
         self.assertTrue(args.non_interactive)
 
+
+
+
+class TestUserInterfacePrompt(unittest.TestCase):
+    @patch('builtins.input', return_value='1')
+    def test_prompt_choice_valid(self, mock_input):
+        choice = UserInterface.prompt_choice("Select", 3)
+        self.assertEqual(choice, 0)
+
+    @patch('builtins.input', return_value='')
+    def test_prompt_choice_default(self, mock_input):
+        choice = UserInterface.prompt_choice("Select", 3, default=2)
+        self.assertEqual(choice, 1)
+
+    @patch('builtins.input', return_value='q')
+    def test_prompt_choice_quit_q(self, mock_input):
+        choice = UserInterface.prompt_choice("Select", 3)
+        self.assertIsNone(choice)
+
+    @patch('builtins.input', return_value='0')
+    def test_prompt_choice_quit_zero(self, mock_input):
+        choice = UserInterface.prompt_choice("Select", 3)
+        self.assertIsNone(choice)
+
+    @patch('builtins.input', return_value='exit')
+    def test_prompt_choice_quit_exit(self, mock_input):
+        choice = UserInterface.prompt_choice("Select", 3)
+        self.assertIsNone(choice)
+
+    @patch('builtins.input', return_value='q')
+    def test_select_profile_for_deletion_quit(self, mock_input):
+        selected = UserInterface.select_profile_for_deletion(['default', 'dev', 'prod'])
+        self.assertIsNone(selected)
 
 if __name__ == "__main__":
     unittest.main()

@@ -144,7 +144,7 @@ class ProfileManager:
         
         return None
     
-    def set_default_profile(self) -> bool:
+    def set_default_profile(self) -> Optional[bool]:
         """Interactive selection to set a profile as default."""
         existing_profiles = list(self.credentials_manager.get_existing_profiles())
         
@@ -156,9 +156,9 @@ class ProfileManager:
         if selected_profile:
             return self.credentials_manager.set_default_profile(selected_profile)
         
-        return False
+        return None
     
-    def delete_profile(self) -> bool:
+    def delete_profile(self) -> Optional[bool]:
         """Interactive selection to delete a profile."""
         existing_profiles = list(self.credentials_manager.get_existing_profiles())
         
@@ -170,7 +170,7 @@ class ProfileManager:
         if selected_profile:
             return self.credentials_manager.delete_profile(selected_profile)
         
-        return False
+        return None
     
     def get_existing_profiles_list(self) -> List[str]:
         """Get list of existing profile names."""
@@ -187,14 +187,16 @@ class ProfileManager:
             elif choice == '2':
                 self.list_profiles()
             elif choice == '3':
-                if self.set_default_profile():
+                res = self.set_default_profile()
+                if res is True:
                     print("Default profile updated successfully!")
-                else:
+                elif res is False:
                     print("Failed to update default profile.")
             elif choice == '4':
-                if self.delete_profile():
+                res = self.delete_profile()
+                if res is True:
                     print("Profile deleted successfully!")
-                else:
+                elif res is False:
                     print("Failed to delete profile.")
             elif choice == '5':
                 print("Exiting profile management.")

@@ -29,11 +29,11 @@ Examples:
   %(prog)s --manage               # Profile management menu
   %(prog)s --list-profiles        # List all profiles
   %(prog)s --list-profiles --json # List profiles as JSON
-  %(prog)s --set-default PROFILE  # Set profile as default
+  %(prog)s --set-default [PROFILE]# Set profile as default (interactive if omitted)
   %(prog)s --export-env PROFILE   # Output bash exports for credentials
   %(prog)s --identity             # Check STS caller identity
   %(prog)s --mcp                  # Run Model Context Protocol (MCP) server
-  %(prog)s --delete PROFILE       # Delete a profile
+  %(prog)s --delete [PROFILE]     # Delete a profile (interactive if omitted)
   %(prog)s --list-ec2             # Authenticate & choose role, then list EC2 instances
   %(prog)s --list-eks             # Authenticate & choose role, then list EKS clusters
   %(prog)s --list-ec2 --region us-west-2  # Choose role, then list EC2 in specific region
@@ -117,13 +117,17 @@ Examples:
     parser.add_argument(
         '--set-default',
         metavar='PROFILE',
-        help='Set the specified profile as default'
+        nargs='?',
+        const='',
+        help='Set the specified profile as default (interactive selection if omitted)'
     )
     
     parser.add_argument(
         '--delete',
         metavar='PROFILE',
-        help='Delete the specified profile'
+        nargs='?',
+        const='',
+        help='Delete the specified profile (interactive selection if omitted)'
     )
     
     parser.add_argument(
@@ -185,9 +189,11 @@ def offer_resource_exploration(profile_name: str, region: str) -> None:
         print("\n🔧 AWS Resources:")
         print("1. 🖥️  List EC2 instances")
         print("2. ☸️  List EKS clusters")
-        print("3. ❌ Skip")
+        print("3. ❌ Skip (or 'q' to quit)")
         
-        choice = input("What would you like to explore? (1-3, default: 3): ").strip()
+        choice = input("What would you like to explore? (1-3, default: 3, 'q' to quit): ").strip().lower()
+        if choice in ('q', 'quit', 'exit', '0', '3', ''):
+            return
         if choice == '1':
             ec2_mgr = EC2Manager(profile_name)
             print(f"\n🔍 Loading EC2 instances from {region}...")
@@ -374,42 +380,85 @@ def main() -> None:
                 profile_manager.list_profiles()
             return
         
-        if args.set_default:
-            success = profile_manager.credentials_manager.set_default_profile(args.set_default)
+        if args.set_default is not None:
+            target_profile = args.set_default
+            if not target_profile:
+                if args.non_interactive:
+                    if args.json:
+                        print(json.dumps({"success": False, "error": "--set-default requires a profile name when run with --non-interactive."}, indent=2))
+                    else:
+                        print("Error: --set-default requires a profile name when run with --non-interactive.")
+                    sys.exit(1)
+                if args.json:
+                    print(json.dumps({"success": False, "error": "--set-default requires a profile name when run with --json."}, indent=2))
+                    sys.exit(1)
+                
+                existing_profiles = list(profile_manager.credentials_manager.get_existing_profiles())
+                if not existing_profiles:
+                    print("No AWS profiles found. Please add a profile first.")
+                    sys.exit(1)
+                selected_profile = profile_manager.ui.select_profile_for_default(existing_profiles)
+                if not selected_profile:
+                    return
+                target_profile = selected_profile
+            
+            success = profile_manager.credentials_manager.set_default_profile(target_profile)
             if args.json:
                 print(json.dumps({
                     "success": success,
-                    "default_profile": args.set_default if success else None,
-                    "error": None if success else f"Failed to set '{args.set_default}' as default profile."
+                    "default_profile": target_profile if success else None,
+                    "error": None if success else f"Failed to set '{target_profile}' as default profile."
                 }, indent=2))
             else:
                 if success:
-                    print(f"Successfully set '{args.set_default}' as default profile.")
+                    print(f"Successfully set '{target_profile}' as default profile.")
                 else:
-                    print(f"Failed to set '{args.set_default}' as default profile.")
+                    print(f"Failed to set '{target_profile}' as default profile.")
             if not success:
                 sys.exit(1)
             return
         
-        if args.delete:
-            if args.delete == 'default':
+        if args.delete is not None:
+            target_profile = args.delete
+            if not target_profile:
+                if args.non_interactive:
+                    if args.json:
+                        print(json.dumps({"success": False, "error": "--delete requires a profile name when run with --non-interactive."}, indent=2))
+                    else:
+                        print("Error: --delete requires a profile name when run with --non-interactive.")
+                    sys.exit(1)
+                if args.json:
+                    print(json.dumps({"success": False, "error": "--delete requires a profile name when run with --json."}, indent=2))
+                    sys.exit(1)
+                
+                existing_profiles = list(profile_manager.credentials_manager.get_existing_profiles())
+                if not existing_profiles:
+                    print("No AWS profiles found.")
+                    sys.exit(1)
+                selected_profile = profile_manager.ui.select_profile_for_deletion(existing_profiles)
+                if not selected_profile:
+                    return
+                target_profile = selected_profile
+            
+            if target_profile == 'default':
                 if args.json:
                     print(json.dumps({"success": False, "error": "Cannot delete the default profile."}, indent=2))
                 else:
                     print("Error: Cannot delete the default profile.")
                 sys.exit(1)
-            success = profile_manager.credentials_manager.delete_profile(args.delete)
+            
+            success = profile_manager.credentials_manager.delete_profile(target_profile)
             if args.json:
                 print(json.dumps({
                     "success": success,
-                    "deleted_profile": args.delete if success else None,
-                    "error": None if success else f"Failed to delete profile '{args.delete}'."
+                    "deleted_profile": target_profile if success else None,
+                    "error": None if success else f"Failed to delete profile '{target_profile}'."
                 }, indent=2))
             else:
                 if success:
-                    print(f"Successfully deleted profile '{args.delete}'.")
+                    print(f"Successfully deleted profile '{target_profile}'.")
                 else:
-                    print(f"Failed to delete profile '{args.delete}'.")
+                    print(f"Failed to delete profile '{target_profile}'.")
             if not success:
                 sys.exit(1)
             return
