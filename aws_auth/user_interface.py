@@ -487,7 +487,7 @@ class UserInterface:
         print("0. Cancel / Quit (or 'q')")
         
         try:
-            choice = UserInterface.prompt_choice("Select profile to use", len(sorted_profiles), default=None, allow_quit=True)
+            choice = UserInterface.prompt_choice("Select profile to use", len(sorted_profiles), default=1, allow_quit=True)
             if choice is None:
                 print("Operation cancelled.")
                 return None
@@ -510,7 +510,7 @@ class UserInterface:
         print("0. Cancel / Quit (or 'q')")
         
         try:
-            choice = UserInterface.prompt_choice("Select profile to set as default", len(sorted_profiles), default=None, allow_quit=True)
+            choice = UserInterface.prompt_choice("Select profile to set as default", len(sorted_profiles), default=1, allow_quit=True)
             if choice is None:
                 print("Operation cancelled.")
                 return None
@@ -565,8 +565,10 @@ class UserInterface:
         
         while True:
             try:
-                choice = input("Select an option (1-5, or 'q' to quit): ").strip().lower()
-                if choice in ['1', '2', '3', '4', '5']:
+                choice = input("Select an option (1-5, default: 1, 'q' to quit): ").strip().lower()
+                if not choice or choice == '1':
+                    return '1'
+                if choice in ['2', '3', '4', '5']:
                     return choice
                 if choice in ['q', 'quit', 'exit', '0']:
                     return '5'
@@ -630,7 +632,7 @@ class UserInterface:
         
         print("0. Cancel / Quit (or 'q')")
         try:
-            choice = UserInterface.prompt_choice("Select an instance to get connection commands", len(instances), default=None, allow_quit=True)
+            choice = UserInterface.prompt_choice("Select an instance to get connection commands", len(instances), default=1, allow_quit=True)
             if choice is None:
                 print("Operation cancelled.")
                 return None
@@ -707,7 +709,7 @@ class UserInterface:
         
         print("0. Cancel / Quit (or 'q')")
         try:
-            choice = UserInterface.prompt_choice("Select a cluster to connect", len(clusters), default=None, allow_quit=True)
+            choice = UserInterface.prompt_choice("Select a cluster to connect", len(clusters), default=1, allow_quit=True)
             if choice is None:
                 print("Operation cancelled.")
                 return None

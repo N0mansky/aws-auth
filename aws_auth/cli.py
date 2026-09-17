@@ -196,17 +196,29 @@ Examples:
 
 
 def offer_resource_exploration(profile_name: str, region: str) -> None:
-    """Interactive prompt to explore EC2 or EKS resources after authentication."""
+    """Interactive prompt to explore EKS or EC2 resources after authentication."""
     try:
         print("\n🔧 AWS Resources:")
-        print("1. 🖥️  List EC2 instances")
-        print("2. ☸️  List EKS clusters")
+        print("1. ☸️  List EKS clusters")
+        print("2. 🖥️  List EC2 instances")
         print("3. ❌ Skip (or 'q' to quit)")
         
-        choice = input("What would you like to explore? (1-3, default: 3, 'q' to quit): ").strip().lower()
-        if choice in ('q', 'quit', 'exit', '0', '3', ''):
+        choice = input("What would you like to explore? (1-3, default: 1, 'q' to quit): ").strip().lower()
+        if choice in ('q', 'quit', 'exit', '0', '3'):
             return
-        if choice == '1':
+        if choice in ('1', ''):
+            eks_mgr = EKSManager(profile_name)
+            print(f"\n🔍 Loading EKS clusters from {region}...")
+            clusters = eks_mgr.list_clusters(region)
+            ui = UserInterface()
+            ui.display_eks_clusters(clusters, region)
+            if clusters:
+                selected = ui.select_eks_cluster(clusters)
+                if selected and selected.get('status') == 'ACTIVE':
+                    if eks_mgr.connect_to_cluster(selected, region):
+                        print(f"\n✅ Successfully configured access to cluster '{selected['name']}'")
+                        print(f"🔧 Example: kubectl get nodes --context {selected.get('arn', '')}")
+        elif choice == '2':
             ec2_mgr = EC2Manager(profile_name)
             print(f"\n🔍 Loading EC2 instances from {region}...")
             instances = ec2_mgr.list_instances(region)
@@ -219,18 +231,6 @@ def offer_resource_exploration(profile_name: str, region: str) -> None:
                     ui.display_ssh_command(selected, ssh_cmd)
                     print(f"\n🚀 Initiating SSM connection to {selected['name'] or selected['instance_id']}...")
                     ec2_mgr.connect_via_ssm(selected)
-        elif choice == '2':
-            eks_mgr = EKSManager(profile_name)
-            print(f"\n🔍 Loading EKS clusters from {region}...")
-            clusters = eks_mgr.list_clusters(region)
-            ui = UserInterface()
-            ui.display_eks_clusters(clusters, region)
-            if clusters:
-                selected = ui.select_eks_cluster(clusters)
-                if selected and selected.get('status') == 'ACTIVE':
-                    if eks_mgr.connect_to_cluster(selected, region):
-                        print(f"\n✅ Successfully configured access to cluster '{selected['name']}'")
-                        print(f"🔧 Example: kubectl get nodes --context {selected.get('arn', '')}")
     except (KeyboardInterrupt, EOFError):
         print("\nSkipping resource exploration.")
 

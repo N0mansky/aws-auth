@@ -17,24 +17,34 @@ class TestOfferResourceExploration(unittest.TestCase):
         mock_eks.assert_not_called()
 
     @patch("builtins.input", return_value="1")
-    @patch("aws_auth.cli.EC2Manager")
-    @patch("aws_auth.cli.UserInterface")
-    def test_choice_1_lists_ec2(self, mock_ui_cls, mock_ec2_cls, mock_input):
-        mock_ec2 = MagicMock()
-        mock_ec2_cls.return_value = mock_ec2
-        mock_ec2.list_instances.return_value = []
-        offer_resource_exploration("test-profile", "us-east-1")
-        mock_ec2.list_instances.assert_called_once_with("us-east-1")
-
-    @patch("builtins.input", return_value="2")
     @patch("aws_auth.cli.EKSManager")
     @patch("aws_auth.cli.UserInterface")
-    def test_choice_2_lists_eks(self, mock_ui_cls, mock_eks_cls, mock_input):
+    def test_choice_1_lists_eks(self, mock_ui_cls, mock_eks_cls, mock_input):
         mock_eks = MagicMock()
         mock_eks_cls.return_value = mock_eks
         mock_eks.list_clusters.return_value = []
         offer_resource_exploration("test-profile", "us-east-1")
         mock_eks.list_clusters.assert_called_once_with("us-east-1")
+
+    @patch("builtins.input", return_value="")
+    @patch("aws_auth.cli.EKSManager")
+    @patch("aws_auth.cli.UserInterface")
+    def test_default_choice_lists_eks(self, mock_ui_cls, mock_eks_cls, mock_input):
+        mock_eks = MagicMock()
+        mock_eks_cls.return_value = mock_eks
+        mock_eks.list_clusters.return_value = []
+        offer_resource_exploration("test-profile", "us-east-1")
+        mock_eks.list_clusters.assert_called_once_with("us-east-1")
+
+    @patch("builtins.input", return_value="2")
+    @patch("aws_auth.cli.EC2Manager")
+    @patch("aws_auth.cli.UserInterface")
+    def test_choice_2_lists_ec2(self, mock_ui_cls, mock_ec2_cls, mock_input):
+        mock_ec2 = MagicMock()
+        mock_ec2_cls.return_value = mock_ec2
+        mock_ec2.list_instances.return_value = []
+        offer_resource_exploration("test-profile", "us-east-1")
+        mock_ec2.list_instances.assert_called_once_with("us-east-1")
 
 
 class TestAuthManager(unittest.TestCase):

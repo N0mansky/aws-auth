@@ -113,5 +113,27 @@ class TestUserInterfacePrompt(unittest.TestCase):
         selected = UserInterface.select_profile_for_deletion(['default', 'dev', 'prod'])
         self.assertIsNone(selected)
 
+    @patch('builtins.input', return_value='')
+    def test_select_profile_to_use_defaults_to_first(self, mock_input):
+        selected = UserInterface.select_profile_to_use(['staging-admin', 'dev-admin'])
+        self.assertEqual(selected, 'dev-admin')  # sorted alphabetically
+
+    @patch('builtins.input', return_value='')
+    def test_select_eks_cluster_defaults_to_first(self, mock_input):
+        clusters = [{'name': 'cluster-a', 'status': 'ACTIVE'}, {'name': 'cluster-b', 'status': 'ACTIVE'}]
+        selected = UserInterface.select_eks_cluster(clusters)
+        self.assertEqual(selected, clusters[0])
+
+    @patch('builtins.input', return_value='')
+    def test_select_ec2_instance_defaults_to_first(self, mock_input):
+        instances = [{'instance_id': 'i-111', 'name': 'app-1', 'state': 'running'}, {'instance_id': 'i-222', 'name': 'app-2', 'state': 'running'}]
+        selected = UserInterface.select_ec2_instance(instances)
+        self.assertEqual(selected, instances[0])
+
+    @patch('builtins.input', return_value='')
+    def test_show_profile_menu_defaults_to_1(self, mock_input):
+        choice = UserInterface.show_profile_menu()
+        self.assertEqual(choice, '1')
+
 if __name__ == "__main__":
     unittest.main()
