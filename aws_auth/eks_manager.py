@@ -26,7 +26,12 @@ class EKSManager:
             if self.profile_name and self.profile_name != 'default':
                 self.session = boto3.Session(profile_name=self.profile_name)
             else:
-                self.session = boto3.Session()
+                from .credentials_manager import CredentialsManager
+                cm = CredentialsManager()
+                if cm.profile_exists('default'):
+                    self.session = boto3.Session(profile_name='default')
+                else:
+                    self.session = boto3.Session()
             
             self.eks_client = self.session.client('eks')
             logger.info(f"EKS client initialized with profile: {self.profile_name or 'default'}")

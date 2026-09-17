@@ -160,5 +160,51 @@ class TestCLIArgs(unittest.TestCase):
         self.assertTrue(args2.switch_profile)
 
 
+class TestEnvironmentSanitization(unittest.TestCase):
+    """Test suite for environment sanitization when orphaned AWS_PROFILE is present."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.cm = CredentialsManager()
+        self.cm.credentials_path = os.path.join(self.temp_dir.name, "credentials")
+        self.cm.aws_dir = self.temp_dir.name
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_profile_exists(self):
+        # Empty file / non-existent
+        self.assertFalse(self.cm.profile_exists("nonexistent"))
+        self.assertFalse(self.cm.profile_exists(""))
+
+        # Add profile to credentials
+        with open(self.cm.credentials_path, "w") as f:
+            f.write("[staging-admin]\naws_access_key_id = test\n")
+        self.assertTrue(self.cm.profile_exists("staging-admin"))
+        self.assertFalse(self.cm.profile_exists("prod-admin"))
+
+    def test_sanitize_environment_purges_orphaned_profile(self):
+        # Setup: credentials path has no profiles
+        with patch.dict(os.environ, {"AWS_PROFILE": "ghost-profile", "AWS_DEFAULT_PROFILE": "ghost-default"}):
+            self.cm.sanitize_environment()
+            self.assertNotIn("AWS_PROFILE", os.environ)
+            self.assertNotIn("AWS_DEFAULT_PROFILE", os.environ)
+
+    def test_sanitize_environment_preserves_valid_profile(self):
+        with open(self.cm.credentials_path, "w") as f:
+            f.write("[valid-profile]\naws_access_key_id = test\n")
+
+        with patch.dict(os.environ, {"AWS_PROFILE": "valid-profile"}):
+            self.cm.sanitize_environment()
+            self.assertEqual(os.environ.get("AWS_PROFILE"), "valid-profile")
+
+    def test_create_unauthenticated_client_with_orphaned_profile(self):
+        from aws_auth.sso_client import create_unauthenticated_client
+        # Even with nonexistent AWS_PROFILE, client should create successfully without ProfileNotFound
+        with patch.dict(os.environ, {"AWS_PROFILE": "nonexistent-profile-xyz"}):
+            client = create_unauthenticated_client("sso-oidc", "us-east-1")
+            self.assertIsNotNone(client)
+
+
 if __name__ == "__main__":
     unittest.main()

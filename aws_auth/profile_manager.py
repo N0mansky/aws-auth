@@ -47,7 +47,7 @@ class ProfileManager:
         existing_profiles = list(self.credentials_manager.get_existing_profiles())
         
         if not existing_profiles:
-            print("No AWS profiles found. Please add a profile first with: aws-auth.py")
+            print("No AWS profiles found. Please add a profile first with: aws-auth")
             return None
         
         # Determine which profile is currently active

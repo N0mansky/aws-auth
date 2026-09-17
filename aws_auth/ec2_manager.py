@@ -87,7 +87,12 @@ class EC2Manager:
             if self.profile_name and self.profile_name != 'default':
                 self.session = boto3.Session(profile_name=self.profile_name)
             else:
-                self.session = boto3.Session()
+                from .credentials_manager import CredentialsManager
+                cm = CredentialsManager()
+                if cm.profile_exists('default'):
+                    self.session = boto3.Session(profile_name='default')
+                else:
+                    self.session = boto3.Session()
             
             self.ec2_client = self.session.client('ec2')
             logger.info(f"EC2 client initialized with profile: {self.profile_name or 'default'}")

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aws-auth"
-version = "1.2.1"
+version = "1.2.2"
 description = "Fast, modular AWS SSO authentication tool with MCP server support, credential caching, and EC2/EKS integration"
 readme = "README.md"
 requires-python = ">=3.10"

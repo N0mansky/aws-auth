@@ -1,14 +1,37 @@
-"""AWS SSO client operations."""
-
+import os
 import logging
 import boto3
 from datetime import datetime
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, TYPE_CHECKING
 
 from .config import Config
-from .token_manager import TokenManager
+from .credentials_manager import CredentialsManager
+
+if TYPE_CHECKING:
+    from .token_manager import TokenManager
 
 logger = logging.getLogger(__name__)
+
+
+def create_unauthenticated_client(service_name: str, region_name: str) -> Any:
+    """Create a boto3 client (sso, sso-oidc) without profile dependency.
+    
+    SSO operations use client registration and bearer access tokens, never
+    AWS SigV4 profile credentials. If an invalid or deleted AWS_PROFILE is
+    present in the environment (e.g. after 'rm -rf ~/.aws*' or fresh install),
+    standard boto3.client() crashes with ProfileNotFound. This helper shields
+    client initialization from stale profile environment variables.
+    """
+    saved_profile = os.environ.pop("AWS_PROFILE", None)
+    saved_default = os.environ.pop("AWS_DEFAULT_PROFILE", None)
+    try:
+        return boto3.client(service_name, region_name=region_name)
+    finally:
+        cm = CredentialsManager()
+        if saved_profile and cm.profile_exists(saved_profile):
+            os.environ["AWS_PROFILE"] = saved_profile
+        if saved_default and cm.profile_exists(saved_default):
+            os.environ["AWS_DEFAULT_PROFILE"] = saved_default
 
 
 class SSOClient:
@@ -16,8 +39,8 @@ class SSOClient:
     
     def __init__(self, config: Config):
         self.config = config
-        self.sso_client = boto3.client("sso", region_name=config.SSO_REGION)
-        self.oidc_client = boto3.client("sso-oidc", region_name=config.SSO_REGION)
+        self.sso_client = create_unauthenticated_client("sso", config.SSO_REGION)
+        self.oidc_client = create_unauthenticated_client("sso-oidc", config.SSO_REGION)
     
     def _list_paginated(self, method_name: str, params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Paginate through SSO API responses to get all results."""
@@ -70,7 +93,7 @@ class SSOClient:
             logger.error(f"Failed to get role credentials: {e}")
             raise
     
-    def register_client(self, token_manager: TokenManager) -> Tuple[str, str]:
+    def register_client(self, token_manager: 'TokenManager') -> Tuple[str, str]:
         """Register a new OIDC client or load cached one."""
         client_id, client_secret = token_manager.load_registered_client()
         if not client_id:

@@ -236,6 +236,45 @@ class CredentialsManager:
         except OSError:
             pass
 
+    def profile_exists(self, profile_name: str) -> bool:
+        """Check if a profile exists in ~/.aws/credentials or ~/.aws/config."""
+        if not profile_name or not profile_name.strip():
+            return False
+        clean_name = profile_name.strip()
+        if clean_name in self.get_existing_profiles():
+            return True
+        config_path = os.path.expanduser("~/.aws/config")
+        if os.path.exists(config_path):
+            try:
+                cp = configparser.ConfigParser()
+                cp.read(config_path)
+                return (clean_name in cp.sections() or 
+                        f"profile {clean_name}" in cp.sections())
+            except Exception:
+                pass
+        return False
+
+    def sanitize_environment(self) -> None:
+        """Purge invalid or orphaned AWS_PROFILE / AWS_DEFAULT_PROFILE from os.environ.
+        
+        If a user has an orphaned AWS_PROFILE exported in their shell but deleted
+        ~/.aws/credentials or the profile, boto3 raises ProfileNotFound during
+        session and client initialization. This method purges non-existent profiles.
+        """
+        env_profile = os.environ.get("AWS_PROFILE")
+        if env_profile and env_profile.strip():
+            candidate = env_profile.strip()
+            if not self.profile_exists(candidate):
+                logger.debug(f"Purged invalid AWS_PROFILE='{candidate}' from process environment")
+                os.environ.pop("AWS_PROFILE", None)
+
+        default_profile = os.environ.get("AWS_DEFAULT_PROFILE")
+        if default_profile and default_profile.strip():
+            candidate = default_profile.strip()
+            if not self.profile_exists(candidate):
+                logger.debug(f"Purged invalid AWS_DEFAULT_PROFILE='{candidate}' from process environment")
+                os.environ.pop("AWS_DEFAULT_PROFILE", None)
+
     def get_active_profile(self) -> Optional[str]:
         """Get the currently active profile name.
         

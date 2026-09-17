@@ -397,10 +397,9 @@ class TokenManager:
     def validate_access_token(self, access_token: str) -> bool:
         """Validate the access token by making a test API call."""
         try:
-            # Lazy import boto3 for speed
-            import boto3
+            from .sso_client import create_unauthenticated_client
             if self._sso_client_cache is None:
-                self._sso_client_cache = boto3.client("sso", region_name=self.config.SSO_REGION)
+                self._sso_client_cache = create_unauthenticated_client("sso", self.config.SSO_REGION)
             self._sso_client_cache.list_accounts(accessToken=access_token, maxResults=1)
             return True
         except Exception as e:

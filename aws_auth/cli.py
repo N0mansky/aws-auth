@@ -6,7 +6,7 @@ import sys
 import json
 import argparse
 import logging
-from aws_auth import AuthManager, Config, __version__
+from aws_auth import AuthManager, Config, CredentialsManager, __version__
 from aws_auth.profile_manager import ProfileManager
 from aws_auth.ec2_manager import EC2Manager
 from aws_auth.eks_manager import EKSManager
@@ -248,6 +248,9 @@ def main() -> None:
         logging.getLogger().setLevel(logging.INFO)
         # Suppress verbose messages from credentials_manager
         logging.getLogger('aws_auth.credentials_manager').setLevel(logging.WARNING)
+    
+    # Sanitize process environment: purge non-existent AWS_PROFILE to protect boto3
+    CredentialsManager().sanitize_environment()
     
     # If running MCP mode, launch MCP server immediately
     if args.mcp:
