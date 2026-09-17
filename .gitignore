@@ -6,6 +6,8 @@ __pycache__/
 # AWS Auth local credentials and tokens
 .aws-auth/
 .aws/
+.security-policy.json
+.security-policy.local.json
 *.token
 *.credentials
 *.pem

@@ -16,6 +16,8 @@ class CredentialsManager:
     def __init__(self):
         self.credentials_path = os.path.expanduser("~/.aws/credentials")
         self.aws_dir = os.path.dirname(self.credentials_path)
+        self.current_profile_path = os.path.expanduser("~/.aws-auth/current_profile")
+        self.current_profile_dir = os.path.dirname(self.current_profile_path)
         self._config_cache = None
         self._config_cache_time = 0
         self._config_cache_ttl = 2.0  # Cache for 2 seconds to avoid redundant reads
@@ -182,12 +184,83 @@ class CredentialsManager:
                 config['default'][key] = value
             
             self._atomic_write_config(config)
+            self.set_current_profile(source_profile)
             logger.debug(f"Set '{source_profile}' as default profile")
             return True
             
         except Exception as e:
             logger.error(f"Failed to set default profile: {e}")
             return False
+
+    def set_current_profile(self, profile_name: str) -> bool:
+        """Persist the active profile name to ~/.aws-auth/current_profile."""
+        try:
+            profile_name = profile_name.strip()
+            if not profile_name:
+                return False
+            os.makedirs(self.current_profile_dir, mode=0o700, exist_ok=True)
+            try:
+                os.chmod(self.current_profile_dir, 0o700)
+            except (OSError, NotImplementedError):
+                pass
+
+            temp_path = f"{self.current_profile_path}.tmp.{os.getpid()}.{int(time.time() * 1000)}"
+            with open(temp_path, "w") as f:
+                f.write(f"{profile_name}\n")
+            self._secure_file_permissions(temp_path)
+            os.replace(temp_path, self.current_profile_path)
+            self._secure_file_permissions(self.current_profile_path)
+            logger.debug(f"Persisted active profile '{profile_name}' to {self.current_profile_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to persist current profile: {e}")
+            return False
+
+    def get_current_profile(self) -> Optional[str]:
+        """Read the active profile name from ~/.aws-auth/current_profile."""
+        if not os.path.exists(self.current_profile_path):
+            return None
+        try:
+            with open(self.current_profile_path, "r") as f:
+                content = f.read().strip()
+                return content if content else None
+        except Exception as e:
+            logger.debug(f"Failed to read current profile from {self.current_profile_path}: {e}")
+            return None
+
+    def clear_current_profile(self) -> None:
+        """Remove ~/.aws-auth/current_profile file if it exists."""
+        try:
+            if os.path.exists(self.current_profile_path):
+                os.remove(self.current_profile_path)
+        except OSError:
+            pass
+
+    def get_active_profile(self) -> Optional[str]:
+        """Get the currently active profile name.
+        
+        Priority:
+        1. AWS_PROFILE environment variable (if non-empty)
+        2. ~/.aws-auth/current_profile
+        3. Default profile name if matched to another profile
+        4. 'default' if present in credentials
+        """
+        env_profile = os.environ.get("AWS_PROFILE")
+        if env_profile and env_profile.strip():
+            return env_profile.strip()
+
+        saved_profile = self.get_current_profile()
+        if saved_profile:
+            return saved_profile
+
+        matched_default = self.get_default_profile_name()
+        if matched_default:
+            return matched_default
+
+        if 'default' in self.get_existing_profiles():
+            return 'default'
+
+        return None
 
     def get_default_profile_name(self) -> Optional[str]:
         """Determine which profile is currently set as default by comparing credentials.
@@ -255,6 +328,9 @@ class CredentialsManager:
             
             config.remove_section(profile_name)
             self._atomic_write_config(config)
+
+            if self.get_current_profile() == profile_name:
+                self.clear_current_profile()
             
             logger.debug(f"Deleted profile '{profile_name}'")
             return True

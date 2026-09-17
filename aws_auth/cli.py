@@ -170,7 +170,19 @@ Examples:
         '--use-profile',
         '-p',
         metavar='PROFILE',
-        help='Use a specific profile (just shows usage, does not set as default)'
+        help='Activate and use a specific profile'
+    )
+
+    parser.add_argument(
+        '--current-profile',
+        action='store_true',
+        help='Print the active AWS profile name from ~/.aws-auth/current_profile'
+    )
+
+    parser.add_argument(
+        '--write-default',
+        action='store_true',
+        help='Also write/copy credentials to [default] section in credentials file (opt-in)'
     )
     
     parser.add_argument(
@@ -261,10 +273,27 @@ def main() -> None:
             print("\nConfiguration cancelled.")
         return
 
+    # Fast handler for current-profile check
+    if args.current_profile:
+        cm = ProfileManager().credentials_manager
+        current = cm.get_current_profile()
+        if current:
+            if args.json:
+                print(json.dumps({"success": True, "profile": current}, indent=2))
+            else:
+                print(current)
+            return
+        else:
+            if args.json:
+                print(json.dumps({"success": False, "error": "No active profile set"}, indent=2))
+            else:
+                sys.stderr.write("No active profile set. Run 'aws-auth' to authenticate or select a profile.\n")
+            sys.exit(1)
+
     # Handle standard AWS credential_process
     if args.credential_process is not None:
-        target_profile = args.credential_process or "default"
         profile_manager = ProfileManager()
+        target_profile = (args.credential_process if args.credential_process != 'default' else None) or profile_manager.credentials_manager.get_active_profile() or "default"
         creds = profile_manager.credentials_manager.get_unmasked_profile_credentials(target_profile)
         if not creds or not creds.get("aws_access_key_id"):
             sys.stderr.write(f"Error: No credentials found for profile '{target_profile}'.\n")
@@ -282,7 +311,7 @@ def main() -> None:
     # Handle export-env
     if args.export_env is not None:
         profile_manager = ProfileManager()
-        target_profile = args.export_env or "default"
+        target_profile = (args.export_env if args.export_env != 'default' else None) or profile_manager.credentials_manager.get_active_profile() or "default"
         creds = profile_manager.credentials_manager.get_unmasked_profile_credentials(target_profile)
         if not creds:
             if args.json:
@@ -314,7 +343,8 @@ def main() -> None:
 
     # Handle identity check
     if args.identity:
-        target_profile = args.use_profile or "default"
+        profile_manager = ProfileManager()
+        target_profile = args.use_profile or profile_manager.credentials_manager.get_active_profile() or "default"
         identity = get_caller_identity(profile_name=target_profile if target_profile != "default" else None)
         if args.json:
             print(json.dumps({
@@ -341,7 +371,8 @@ def main() -> None:
             if args.non_interactive:
                 print("Error: --switch-profile requires interactive selection. Use --set-default <profile> instead.")
                 sys.exit(1)
-            profile_manager.switch_profile(set_as_default=True)
+            set_default = (args.set_default is not None) or getattr(args, 'write_default', False)
+            profile_manager.switch_profile(set_as_default=set_default)
             return
         
         if args.use_profile:
@@ -354,19 +385,24 @@ def main() -> None:
                     print(f"Available profiles: {', '.join(existing_profiles) if existing_profiles else 'None'}")
                 sys.exit(1)
             
+            # Persist to current_profile
+            profile_manager.credentials_manager.set_current_profile(args.use_profile)
+            if getattr(args, 'write_default', False):
+                profile_manager.credentials_manager.set_default_profile(args.use_profile)
+            
             if args.json:
                 print(json.dumps({"success": True, "profile": args.use_profile}, indent=2))
             else:
-                print(f"\n✅ Using profile: {args.use_profile}")
-                print(f"   Use: aws --profile {args.use_profile} <command>")
-                print(f"\n   Example:")
-                print(f"   aws --profile {args.use_profile} sts get-caller-identity")
+                print(f"\n✅ Active profile set to: {args.use_profile}")
+                print(f"   Exported via shell wrapper: export AWS_PROFILE={args.use_profile}")
+                print(f"   Or use: aws --profile {args.use_profile} <command>")
             return
         
         if args.list_profiles:
             if args.json:
                 existing_profiles = list(profile_manager.credentials_manager.get_existing_profiles())
                 default_p = profile_manager.credentials_manager.get_default_profile_name()
+                active_p = profile_manager.credentials_manager.get_active_profile()
                 profiles_info = {
                     p: profile_manager.credentials_manager.get_profile_info(p)
                     for p in existing_profiles
@@ -374,6 +410,7 @@ def main() -> None:
                 print(json.dumps({
                     "success": True,
                     "default_profile": default_p or "default",
+                    "active_profile": active_p or default_p or "default",
                     "profiles": profiles_info
                 }, indent=2))
             else:
@@ -403,10 +440,13 @@ def main() -> None:
                 target_profile = selected_profile
             
             success = profile_manager.credentials_manager.set_default_profile(target_profile)
+            if success:
+                profile_manager.credentials_manager.set_current_profile(target_profile)
             if args.json:
                 print(json.dumps({
                     "success": success,
                     "default_profile": target_profile if success else None,
+                    "active_profile": target_profile if success else None,
                     "error": None if success else f"Failed to set '{target_profile}' as default profile."
                 }, indent=2))
             else:
@@ -465,31 +505,34 @@ def main() -> None:
         
         if args.list_ec2:
             try:
+                ec2_profile = (args.list_ec2 if args.list_ec2 != 'default' else None) or profile_manager.credentials_manager.get_active_profile() or "default"
                 # Check if we should authenticate first (default behavior)
                 if not args.no_auth:
                     if not args.json:
                         print("🔐 Authenticating and selecting role...")
                     auth_manager = AuthManager()
-                    auth_manager.assume_role_via_sso()
+                    auth_result = auth_manager.assume_role_via_sso(set_as_default=bool(args.write_default))
+                    ec2_profile = auth_result.profile_names[0] if auth_result.profile_names else ec2_profile
                     if not args.json:
                         print(f"\n🔄 Now listing EC2 instances with your selected credentials...")
-                elif not profile_manager.credentials_manager.get_profile_info(args.list_ec2):
+                elif not profile_manager.credentials_manager.get_profile_info(ec2_profile):
                     if not args.json:
                         print("🔐 No valid credentials found. Authenticating first...")
                     auth_manager = AuthManager()
-                    auth_manager.assume_role_via_sso()
+                    auth_result = auth_manager.assume_role_via_sso(set_as_default=bool(args.write_default))
+                    ec2_profile = auth_result.profile_names[0] if auth_result.profile_names else ec2_profile
                     if not args.json:
                         print(f"\n🔄 Now listing EC2 instances with your selected credentials...")
                 
-                ec2_manager = EC2Manager(args.list_ec2)
+                ec2_manager = EC2Manager(ec2_profile)
                 if not args.json:
-                    print(f"🔍 Loading EC2 instances from {args.region} using profile '{args.list_ec2}'...")
+                    print(f"🔍 Loading EC2 instances from {args.region} using profile '{ec2_profile}'...")
                 instances = ec2_manager.list_instances(args.region)
                 
                 if args.json:
                     print(json.dumps({
                         "success": True,
-                        "profile": args.list_ec2,
+                        "profile": ec2_profile,
                         "region": args.region,
                         "count": len(instances),
                         "instances": instances
@@ -525,31 +568,34 @@ def main() -> None:
         
         if args.list_eks:
             try:
+                eks_profile = (args.list_eks if args.list_eks != 'default' else None) or profile_manager.credentials_manager.get_active_profile() or "default"
                 # Check if we should authenticate first (default behavior)
                 if not args.no_auth:
                     if not args.json:
                         print("🔐 Authenticating and selecting role...")
                     auth_manager = AuthManager()
-                    auth_manager.assume_role_via_sso()
+                    auth_result = auth_manager.assume_role_via_sso(set_as_default=bool(args.write_default))
+                    eks_profile = auth_result.profile_names[0] if auth_result.profile_names else eks_profile
                     if not args.json:
                         print(f"\n🔄 Now listing EKS clusters with your selected credentials...")
-                elif not profile_manager.credentials_manager.get_profile_info(args.list_eks):
+                elif not profile_manager.credentials_manager.get_profile_info(eks_profile):
                     if not args.json:
                         print("🔐 No valid credentials found. Authenticating first...")
                     auth_manager = AuthManager()
-                    auth_manager.assume_role_via_sso()
+                    auth_result = auth_manager.assume_role_via_sso(set_as_default=bool(args.write_default))
+                    eks_profile = auth_result.profile_names[0] if auth_result.profile_names else eks_profile
                     if not args.json:
                         print(f"\n🔄 Now listing EKS clusters with your selected credentials...")
                 
-                eks_manager = EKSManager(args.list_eks)
+                eks_manager = EKSManager(eks_profile)
                 if not args.json:
-                    print(f"🔍 Loading EKS clusters from {args.region} using profile '{args.list_eks}'...")
+                    print(f"🔍 Loading EKS clusters from {args.region} using profile '{eks_profile}'...")
                 clusters = eks_manager.list_clusters(args.region)
                 
                 if args.json:
                     print(json.dumps({
                         "success": True,
-                        "profile": args.list_eks,
+                        "profile": eks_profile,
                         "region": args.region,
                         "count": len(clusters),
                         "clusters": clusters
@@ -595,7 +641,10 @@ def main() -> None:
                 sys.stderr.write("Error: SSO_START_URL is required. Set AWS_SSO_START_URL or run 'aws-auth --configure'.\n")
                 sys.exit(1)
         auth_manager = AuthManager(config=config)
-        auth_result = auth_manager.assume_role_via_sso(force_refresh_accounts=args.refresh_cache)
+        auth_result = auth_manager.assume_role_via_sso(
+            force_refresh_accounts=args.refresh_cache,
+            set_as_default=bool(args.write_default)
+        )
         if not args.non_interactive and not args.json:
             primary_profile = auth_result.profile_names[0] if auth_result.profile_names else 'default'
             offer_resource_exploration(primary_profile, auth_result.region)

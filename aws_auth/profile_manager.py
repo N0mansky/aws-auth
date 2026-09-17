@@ -34,12 +34,12 @@ class ProfileManager:
         
         self.ui.display_profiles(profiles_info)
     
-    def switch_profile(self, set_as_default: bool = True) -> Optional[str]:
+    def switch_profile(self, set_as_default: bool = False) -> Optional[str]:
         """Quickly switch to an existing profile without re-authenticating.
         
         Args:
-            set_as_default: If True, sets the selected profile as default.
-                           If False, just shows how to use it.
+            set_as_default: If True, also sets the selected profile as default in credentials file.
+                           If False (default), persists active profile to ~/.aws-auth/current_profile.
         
         Returns:
             The selected profile name, or None if cancelled
@@ -50,8 +50,8 @@ class ProfileManager:
             print("No AWS profiles found. Please add a profile first with: aws-auth.py")
             return None
         
-        # Determine which profile is currently default
-        default_profile = self.credentials_manager.get_default_profile_name()
+        # Determine which profile is currently active
+        active_profile = self.credentials_manager.get_active_profile()
         
         # Show profiles in table format (filter out 'default' and show indicator)
         profiles_info = {}
@@ -61,10 +61,10 @@ class ProfileManager:
             profile_info = self.credentials_manager.get_profile_info(profile_name)
             profiles_info[profile_name] = profile_info
         
-        self.ui.display_profiles_table(profiles_info, default_profile=default_profile)
+        self.ui.display_profiles_table(profiles_info, active_profile=active_profile)
         
         # Let user select (from filtered list, not including 'default')
-        selected_profile = self.ui.select_profile_to_use(filtered_profiles, default_profile=default_profile)
+        selected_profile = self.ui.select_profile_to_use(filtered_profiles, active_profile=active_profile)
         
         if selected_profile:
             # Check if credentials are expired before switching
@@ -99,45 +99,34 @@ class ProfileManager:
                 print("   Please select the same account-role combination to update this profile.")
                 try:
                     auth_manager = AuthManager()
-                    auth_manager.assume_role_via_sso()
-                    # After re-authentication, the default profile is automatically set with fresh credentials
-                    # If user selected the same account-role, the profile will be updated
-                    # If user selected different account-role, a new profile will be created and set as default
+                    auth_result = auth_manager.assume_role_via_sso(set_as_default=set_as_default)
+                    target_to_use = selected_profile
+                    if auth_result.profile_names:
+                        target_to_use = auth_result.profile_names[0]
+                    self.credentials_manager.set_current_profile(target_to_use)
                     if set_as_default:
-                        # Try to switch to the originally selected profile if it's now valid
-                        # Otherwise, the default profile (newly authenticated) will be used
-                        try:
-                            import boto3
-                            session = boto3.Session(profile_name=selected_profile)
-                            sts_client = session.client('sts')
-                            sts_client.get_caller_identity()
-                            # Original profile is now valid, set it as default
-                            self.credentials_manager.set_default_profile(selected_profile)
-                            print(f"\n✅ Switched to profile: {selected_profile}")
-                        except (ClientError, Exception):
-                            # Original profile might not exist or still invalid
-                            # Default profile has valid credentials from re-authentication
-                            print(f"\n✅ Re-authenticated. Using default profile.")
-                        
-                        display_caller_identity(profile_name=None)
-                        return selected_profile
+                        self.credentials_manager.set_default_profile(target_to_use)
+                    display_caller_identity(profile_name=target_to_use)
+                    return target_to_use
                 except Exception as e:
                     logger.error(f"Re-authentication failed: {e}")
                     print(f"❌ Re-authentication failed: {e}")
                     return None
             
             # Credentials are valid, proceed with switch
+            self.credentials_manager.set_current_profile(selected_profile)
+            
             if set_as_default:
                 if self.credentials_manager.set_default_profile(selected_profile):
-                    print(f"\n✅ Switched to profile: {selected_profile}")
-                    # Show current caller identity
-                    display_caller_identity(profile_name=None)  # None = default profile
+                    print(f"\n✅ Switched to profile: {selected_profile} (and set as default)")
+                    # Show caller identity for the selected profile
+                    display_caller_identity(profile_name=selected_profile)
                     return selected_profile
                 else:
                     print(f"\n❌ Failed to set '{selected_profile}' as default profile.")
                     return None
             else:
-                print(f"\n✅ Selected profile: {selected_profile}")
+                print(f"\n✅ Switched active profile to: {selected_profile}")
                 # Show caller identity for the selected profile
                 display_caller_identity(profile_name=selected_profile)
                 return selected_profile
@@ -154,7 +143,10 @@ class ProfileManager:
         
         selected_profile = self.ui.select_profile_for_default(existing_profiles)
         if selected_profile:
-            return self.credentials_manager.set_default_profile(selected_profile)
+            success = self.credentials_manager.set_default_profile(selected_profile)
+            if success:
+                self.credentials_manager.set_current_profile(selected_profile)
+            return success
         
         return None
     

@@ -26,9 +26,10 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
-      - name: Scan for hardcoded credentials & secrets
+      - name: Scan for hardcoded credentials, secrets & sensitive policies
         run: |
           python scripts/check_credentials.py --all
+          python scripts/check_credentials.py --check-commits 5
 
       - name: Scan dependencies for known CVEs (pip-audit)
         run: |

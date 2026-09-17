@@ -92,7 +92,43 @@ if ($env:Path -notlike "*$InstallDirectory*") {
     $env:Path = "$env:Path;$InstallDirectory"
 }
 
-# 6. Verification & Output
+# 6. PowerShell Profile Integration for AWS_PROFILE
+try {
+    if (-not [string]::IsNullOrWhiteSpace($PROFILE)) {
+        $ProfileDir = Split-Path -Path $PROFILE -Parent
+        if (-not [string]::IsNullOrWhiteSpace($ProfileDir) -and -not [System.IO.Directory]::Exists($ProfileDir)) {
+            [System.IO.Directory]::CreateDirectory($ProfileDir) | Out-Null
+        }
+        $PsWrapper = @"
+
+# >>> aws-auth shell wrapper >>>
+if (Test-Path "`$HOME\.aws-auth\current_profile") {
+    `$env:AWS_PROFILE = (Get-Content "`$HOME\.aws-auth\current_profile" -Raw).Trim()
+}
+function aws-auth {
+    & "$ExecutableFile" @args
+    if (`$LASTEXITCODE -eq 0 -and (Test-Path "`$HOME\.aws-auth\current_profile")) {
+        `$env:AWS_PROFILE = (Get-Content "`$HOME\.aws-auth\current_profile" -Raw).Trim()
+    }
+}
+# <<< aws-auth shell wrapper <<<
+"@
+        if ([System.IO.File]::Exists($PROFILE)) {
+            $ExistingContent = [System.IO.File]::ReadAllText($PROFILE)
+            if ($ExistingContent -notlike "*# >>> aws-auth shell wrapper >>>*") {
+                [System.IO.File]::AppendAllText($PROFILE, $PsWrapper)
+                Write-Host "`n✅ Added aws-auth wrapper function to `$PROFILE" -ForegroundColor Green
+            }
+        } else {
+            [System.IO.File]::WriteAllText($PROFILE, $PsWrapper.TrimStart())
+            Write-Host "`n✅ Created PowerShell profile with aws-auth wrapper function" -ForegroundColor Green
+        }
+    }
+} catch {
+    # Non-critical; don't break installation
+}
+
+# 7. Verification & Output
 Write-Host "`n============================================================" -ForegroundColor Green
 Write-Host "🎉 aws-auth installed successfully!" -ForegroundColor Green
 Write-Host "   Binary Location: $ExecutableFile" -ForegroundColor White
@@ -100,3 +136,4 @@ Write-Host "============================================================" -Foreg
 Write-Host "`nTo get started:" -ForegroundColor Yellow
 Write-Host "  1. Restart your terminal (PowerShell / Command Prompt / Windows Terminal)" -ForegroundColor White
 Write-Host "  2. Run: aws-auth`n" -ForegroundColor Cyan
+

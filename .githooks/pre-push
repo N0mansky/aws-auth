@@ -1,0 +1,11 @@
+#!/bin/sh
+# aws-auth pre-push repository & policy scan
+python3 scripts/check_credentials.py --all
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "❌ Pre-push check failed: Secrets or sensitive policy violations detected in tracked files."
+    exit 1
+fi
+exit 0

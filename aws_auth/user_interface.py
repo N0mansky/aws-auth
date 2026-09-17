@@ -157,8 +157,8 @@ class UserInterface:
         # Use provided region or default to us-east-1
         selected_region = region or "us-east-1"
         
-        # Always set as default (no prompt)
-        set_as_default = True
+        # Named profile best practice: do not overwrite default unless explicitly requested
+        set_as_default = False
         
         return profile_names, selected_region, set_as_default
     
@@ -401,23 +401,30 @@ class UserInterface:
             print()
     
     @staticmethod
-    def display_profiles_table(profiles: Dict[str, Dict[str, str]], default_profile: Optional[str] = None) -> None:
+    def display_profiles_table(
+        profiles: Dict[str, Dict[str, str]],
+        default_profile: Optional[str] = None,
+        active_profile: Optional[str] = None
+    ) -> None:
         """Display available AWS profiles in a table format for quick selection.
         
         Args:
             profiles: Dictionary of profile names to profile info
-            default_profile: Name of the profile currently set as default (will be marked with *)
+            default_profile: Name of the profile currently set as default (or active)
+            active_profile: Explicit active profile name (takes precedence over default_profile)
         """
         if not profiles:
             print("No AWS profiles found.")
             return
+        
+        target_profile = active_profile or default_profile
         
         # Filter out 'default' profile and sort
         filtered_profiles = [(name, info) for name, info in profiles.items() if name != 'default']
         sorted_profiles = sorted(filtered_profiles)
         
         print("\nAvailable AWS Profiles:")
-        # AWS CLI style table with borders (expanded for default indicator)
+        # AWS CLI style table with borders (expanded for default/active indicator)
         header = f"| {'#':<3} | {'Profile Name':<22} | {'Region':<15} | {'Status':<15} |"
         separator = "+" + "-" * 5 + "+" + "-" * 24 + "+" + "-" * 17 + "+" + "-" * 17 + "+"
         print(separator)
@@ -436,39 +443,46 @@ class UserInterface:
             else:
                 status = "❌ Invalid"
             
-            # Add * indicator if this is the default profile
+            # Add * indicator if this is the active profile
             display_name = profile_name
-            if default_profile and profile_name == default_profile:
-                display_name = f"{profile_name} *"  # Add * to show it's default
+            if target_profile and profile_name == target_profile:
+                display_name = f"{profile_name} *"  # Add * to show it's active
             
             row = f"| {str(idx):<3} | {display_name:<22} | {region:<15} | {status:<15} |"
             print(row)
         
         print(separator)
         
-        # Show note about default indicator if applicable
-        if default_profile:
-            print(f"* = Currently set as default profile")
+        # Show note about active indicator if applicable
+        if target_profile:
+            print(f"* = Active profile (scoped via AWS_PROFILE or current_profile)")
     
     @staticmethod
-    def select_profile_to_use(profiles: List[str], default_profile: Optional[str] = None) -> Optional[str]:
+    def select_profile_to_use(
+        profiles: List[str],
+        default_profile: Optional[str] = None,
+        active_profile: Optional[str] = None
+    ) -> Optional[str]:
         """Let user select which profile to use/switch to.
         
         Args:
             profiles: List of profile names (should not include 'default')
             default_profile: Name of the currently default profile (for indicator)
+            active_profile: Explicit active profile name (takes precedence)
         """
         if not profiles:
             print("No profiles available.")
             return None
         
+        target_profile = active_profile or default_profile
+        
         print("\n=== Switch to Profile ===")
         sorted_profiles = sorted(profiles)
         for idx, profile_name in enumerate(sorted_profiles, 1):
-            # Add indicator for default profile
+            # Add indicator for active profile
             display_name = profile_name
-            if default_profile and profile_name == default_profile:
-                display_name = f"{profile_name} * (default)"
+            if target_profile and profile_name == target_profile:
+                display_name = f"{profile_name} * (active)"
             print(f"{idx}. {display_name}")
         print("0. Cancel / Quit (or 'q')")
         

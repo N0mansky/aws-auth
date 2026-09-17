@@ -206,7 +206,11 @@ class AuthManager:
             logger.info(f"Token refresh failed: {e}")
             return None
     
-    def assume_role_via_sso(self, force_refresh_accounts: bool = False) -> AuthResult:
+    def assume_role_via_sso(
+        self,
+        force_refresh_accounts: bool = False,
+        set_as_default: bool = False
+    ) -> AuthResult:
         """Perform SSO login, choose account/role, write credentials, and return AuthResult."""
         # Get valid access token
         access_token = self.get_valid_access_token()
@@ -303,7 +307,7 @@ class AuthManager:
         
         # Get user preferences and write credentials
         existing_profiles = list(self.credentials_manager.get_existing_profiles())
-        profile_names, region, set_as_default = self.ui.get_user_preferences(
+        profile_names, region, pref_set_default = self.ui.get_user_preferences(
             existing_profiles,
             account_name=selected_account["accountName"],
             role_name=selected_role["roleName"],
@@ -311,25 +315,22 @@ class AuthManager:
         )
         self.credentials_manager.write_credentials(profile_names, creds, region)
         
-        if len(profile_names) == 1:
+        primary_profile = profile_names[0] if profile_names else 'default'
+        
+        # Persist active profile name to ~/.aws-auth/current_profile
+        self.credentials_manager.set_current_profile(primary_profile)
+        
+        should_set_default = set_as_default or pref_set_default
+        if should_set_default and len(profile_names) == 1:
             profile_name = profile_names[0]
             if self.credentials_manager.set_default_profile(profile_name):
                 logger.info(f"Profile '{profile_name}' set as default.")
             else:
                 logger.warning(f"Failed to set '{profile_name}' as default.")
         
-        logger.info("AWS credentials updated. You can now use the AWS CLI with the selected profile.")
-        if len(profile_names) == 1:
-            profile_name = profile_names[0]
-            if profile_name == 'default' or set_as_default:
-                logger.info("Credentials saved to default profile. Use: aws sts get-caller-identity")
-            else:
-                logger.info(f"Credentials saved to profile '{profile_name}'. Use: aws --profile {profile_name} sts get-caller-identity")
-        else:
-            logger.info(f"Credentials saved to profiles: {', '.join(profile_names)}")
-            for profile_name in profile_names:
-                if profile_name != 'default':
-                    logger.info(f"  Use profile '{profile_name}': aws --profile {profile_name} sts get-caller-identity")
+        logger.info(f"AWS credentials saved for profile '{primary_profile}'. Active profile persisted.")
+        logger.info(f"Active profile: {primary_profile} (export AWS_PROFILE={primary_profile})")
+        logger.info("Use: aws sts get-caller-identity")
         
         return AuthResult(
             profile_names=profile_names,
@@ -337,6 +338,6 @@ class AuthManager:
             region=region,
             account=selected_account,
             role=selected_role,
-            set_as_default=set_as_default
+            set_as_default=should_set_default
         )
     

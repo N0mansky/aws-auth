@@ -55,6 +55,7 @@
 
 ## ✨ Key Features
 
+- 🎯 **AWS Best-Practice Named Profiles**: Credentials are kept in named profile sections (e.g., `[staging-admin]`) and scoped to your terminal session via `export AWS_PROFILE`, preventing unsafe overwrites to `[default]`.
 - ⚡ **Zero-Boilerplate Discovery**: No need to maintain hundreds of lines in `~/.aws/config`. Enter your SSO Start URL once, and all authorized accounts and roles are loaded dynamically.
 - ⭐ **Smart Role Prioritization (MRU)**: Automatically pins your most recently used roles (e.g. `QA Admin`, `Prod Admin`) to `#1` and `#2`. Pressing `Enter` logs you in within **1 second**.
 - 🔍 **Interactive Substring Search**: Type any keyword (`prod`, `qa`, `admin`, `gpu`, `eks`) at the selection prompt to instantly filter dozens of accounts.
@@ -72,7 +73,7 @@
 Download the latest pre-compiled binary from [GitHub Releases](https://github.com/N0mansky/aws-auth/releases/latest):
 
 #### Windows (PowerShell 1-Liner)
-Run in PowerShell to automatically download the binary and configure your PATH:
+Run in PowerShell to automatically download the binary, configure PATH, and set up shell integration:
 ```powershell
 irm https://raw.githubusercontent.com/N0mansky/aws-auth/main/install.ps1 | iex
 ```
@@ -94,22 +95,53 @@ curl -L https://github.com/N0mansky/aws-auth/releases/latest/download/aws-auth-m
 chmod +x aws-auth && sudo mv aws-auth /usr/local/bin/
 ```
 
-### Option 2: Install via pip
+### Option 2: Clone & Install from Source (Automated Shell Setup)
 
-```bash
-pip install git+https://github.com/N0mansky/aws-auth.git
-```
-
-### Option 3: Clone & Install from Source
+`install.sh` and `install.ps1` automatically configure the shell integration wrapper in your shell profile:
 
 ```bash
 git clone https://github.com/N0mansky/aws-auth.git
 cd aws-auth
 
-./install.sh                      # Linux / macOS / WSL2
-powershell .\install.ps1          # Windows (PowerShell)
+./install.sh                      # Linux / macOS / WSL2 (configures ~/.zshrc, ~/.bashrc)
+powershell .\install.ps1          # Windows (PowerShell - configures $PROFILE)
 .\install.bat                     # Windows (Command Prompt)
 ```
+
+### Option 3: Install via pip
+
+```bash
+pip install git+https://github.com/N0mansky/aws-auth.git
+```
+
+---
+
+## 🐚 Shell Integration (`AWS_PROFILE`)
+
+To enable seamless session scoping without child-process limitations, `install.sh` and `install.ps1` automatically install a shell wrapper. 
+
+If you installed manually or via `pip`, add this block to your `~/.zshrc`, `~/.bashrc`, or `~/.profile`:
+
+```bash
+# >>> aws-auth shell wrapper >>>
+# Auto-export active profile on shell startup if present
+if [ -f ~/.aws-auth/current_profile ]; then
+    export AWS_PROFILE=$(< ~/.aws-auth/current_profile)
+fi
+
+# Scopes active profile to current terminal session via AWS_PROFILE
+aws-auth() {
+    command /usr/local/bin/aws-auth "$@"
+    local ret=$?
+    if [ $ret -eq 0 ] && [ -f ~/.aws-auth/current_profile ]; then
+        export AWS_PROFILE=$(< ~/.aws-auth/current_profile)
+    fi
+    return $ret
+}
+# <<< aws-auth shell wrapper <<<
+```
+
+Reload your shell or run `source ~/.zshrc` (or `source ~/.bashrc`). Terminal prompts like **Starship** (`☁️  <profile>`) and tools like `kubectl` or `aws` will instantly reflect your active profile!
 
 ---
 
@@ -132,7 +164,8 @@ Available account-role combinations (Showing 1-10 of 18):
 ...
 Select number 1-10 (default: 1) (type keyword to filter): [ENTER]
 
-✅ Profile 'production-app-admin' set as default in ~/.aws/credentials.
+✅ Profile 'production-app-admin' saved to ~/.aws/credentials.
+✅ Active profile set to: production-app-admin (scoped via AWS_PROFILE)
 ```
 
 ### 2. Configure Portal & Custom Aliases
@@ -191,18 +224,22 @@ aws-auth                     # Interactive SSO login & smart role switch
 aws-auth --configure         # Interactive SSO portal setup
 aws-auth --identity          # Show current STS caller identity
 aws-auth --refresh-cache     # Force refresh remote account/role metadata
+aws-auth --write-default     # Opt-in to write/sync credentials to [default] section
 
-# Profile Management
-aws-auth --list-profiles     # List all stored AWS profiles
-aws-auth --switch-profile    # Switch active default profile
-aws-auth --set-default NAME  # Set specific profile as default
-aws-auth --delete NAME       # Delete profile credentials
+# Profile Management & Session Scoping
+aws-auth --list-profiles          # List all stored AWS profiles (* marks active)
+aws-auth --current-profile        # Print active profile name (fast query)
+aws-auth -p, --use-profile NAME   # Activate named profile in current session
+aws-auth -s, --switch-profile     # Interactive profile switcher
+aws-auth --set-default NAME       # Copy profile credentials to [default] section
+aws-auth --delete NAME            # Delete profile credentials
 
 # Resource Discovery & DevOps
 aws-auth --list-ec2          # List EC2 instances and connect via SSM
 aws-auth --list-eks          # List EKS clusters and update kubeconfig
 
 # Scripting & Headless Automation
+aws-auth --current-profile --json # JSON output {"current_profile": "..."}
 aws-auth --list-profiles --json
 aws-auth --identity --json
 eval $(aws-auth --export-env prod-profile)  # Export AWS keys to current shell

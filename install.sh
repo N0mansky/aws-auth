@@ -85,18 +85,27 @@ else
 fi
 echo ""
 
+# Prefer pyenv python3 if available and functional, otherwise system python3
+PYTHON_CMD="python3"
+if command -v pyenv &> /dev/null; then
+    PYENV_PYTHON="$(pyenv which python3 2>/dev/null || true)"
+    if [ -n "$PYENV_PYTHON" ] && [ -x "$PYENV_PYTHON" ]; then
+        PYTHON_CMD="$PYENV_PYTHON"
+    fi
+fi
+
 # Step 1: Create virtual environment first
 echo "📦 Step 1: Creating virtual environment..."
-if [ -d "venv" ]; then
-    echo "Virtual environment already exists. Skipping creation."
+if [ -d "venv" ] && [ -f "venv/bin/python" ] && [ -f "venv/bin/pip" ]; then
+    echo "Virtual environment already exists and is healthy. Skipping creation."
 else
-    echo "Creating new virtual environment..."
-    # Try to create venv with pip first, fallback to without-pip if needed
-    if python3 -m venv venv 2>/dev/null; then
+    echo "Creating new virtual environment using $PYTHON_CMD..."
+    rm -rf venv
+    if $PYTHON_CMD -m venv venv 2>/dev/null; then
         echo "✅ Virtual environment created successfully with pip."
     else
         echo "Creating virtual environment without pip (will install pip later)..."
-        python3 -m venv venv --without-pip
+        $PYTHON_CMD -m venv venv --without-pip
         if [ $? -ne 0 ]; then
             echo "Error: Failed to create virtual environment."
             exit 1
@@ -111,7 +120,7 @@ source venv/bin/activate
 echo "✅ Virtual environment activated."
 
 # Step 3: Install pip if not available
-if ! command -v pip &> /dev/null; then
+if ! python -m pip --version &> /dev/null; then
     echo "📦 Step 3: Installing pip in virtual environment..."
     curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
     python get-pip.py --force-reinstall
@@ -162,7 +171,7 @@ pyi-makespec --onefile \
 
 # Build with PyInstaller
 echo "Running PyInstaller..."
-venv/bin/pyinstaller aws-auth.spec
+venv/bin/pyinstaller -y --clean aws-auth.spec
 
 if [ $? -eq 0 ]; then
     echo ""
@@ -171,22 +180,69 @@ if [ $? -eq 0 ]; then
     echo ""
     
     echo "📦 Step 7: Installing executable..."
-    if [ -w /usr/local/bin ]; then
-        rm -f /usr/local/bin/aws-auth
+    if [ -w /usr/local/bin/aws-auth ]; then
+        cp dist/aws-auth /usr/local/bin/aws-auth
+        chmod +x /usr/local/bin/aws-auth
+        echo "✅ Installed to /usr/local/bin/aws-auth"
+    elif [ -w /usr/local/bin ]; then
         cp dist/aws-auth /usr/local/bin/aws-auth
         chmod +x /usr/local/bin/aws-auth
         echo "✅ Installed to /usr/local/bin/aws-auth"
     else
         echo "Requesting sudo privileges to install to /usr/local/bin..."
-        sudo rm -f /usr/local/bin/aws-auth
         sudo cp dist/aws-auth /usr/local/bin/aws-auth
         sudo chmod +x /usr/local/bin/aws-auth
         echo "✅ Installed to /usr/local/bin/aws-auth"
     fi
     echo ""
 
+    echo "🔧 Step 8: Configuring shell integration wrapper in ~/.zshrc and ~/.bashrc..."
+    WRAPPER_BLOCK='# >>> aws-auth shell wrapper >>>
+# Auto-export active profile on shell startup if present
+if [ -f ~/.aws-auth/current_profile ]; then
+    export AWS_PROFILE=$(< ~/.aws-auth/current_profile)
+fi
+
+# Scopes active profile to current terminal session via AWS_PROFILE
+aws-auth() {
+    command /usr/local/bin/aws-auth "$@"
+    local ret=$?
+    if [ $ret -eq 0 ] && [ -f ~/.aws-auth/current_profile ]; then
+        export AWS_PROFILE=$(< ~/.aws-auth/current_profile)
+    fi
+    return $ret
+}
+# <<< aws-auth shell wrapper <<<'
+
+    for rc_file in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
+        if [ -f "$rc_file" ]; then
+            if grep -q "# >>> aws-auth shell wrapper >>>" "$rc_file"; then
+                # Replace existing wrapper block
+                python3 -c "
+import sys, re
+path = sys.argv[1]
+with open(path, 'r') as f:
+    content = f.read()
+pattern = r'# >>> aws-auth shell wrapper >>>.*?# <<< aws-auth shell wrapper <<<'
+replacement = '''$WRAPPER_BLOCK'''
+new_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+with open(path, 'w') as f:
+    f.write(new_content)
+" "$rc_file"
+                echo "✅ Updated aws-auth wrapper in $rc_file"
+            else
+                echo "" >> "$rc_file"
+                echo "$WRAPPER_BLOCK" >> "$rc_file"
+                echo "✅ Added aws-auth wrapper function to $rc_file"
+            fi
+        fi
+    done
+    echo ""
+
     echo "You can now run the application from anywhere with:"
     echo "  aws-auth"
+    echo ""
+    echo "💡 Note: Reload your shell or run 'source ~/.zshrc' / 'source ~/.bashrc' to activate the wrapper function."
     echo ""
 else
     echo ""

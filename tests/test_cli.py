@@ -73,7 +73,13 @@ class TestCLIParser(unittest.TestCase):
         self.assertTrue(args.json)
         self.assertTrue(args.non_interactive)
 
+    def test_current_profile_and_write_default_arguments(self):
+        args = self.parser.parse_args(["--current-profile", "--write-default"])
+        self.assertTrue(args.current_profile)
+        self.assertTrue(args.write_default)
 
+    def test_version_string(self):
+        self.assertEqual(__version__, "1.2.0")
 
 
 class TestUserInterfacePrompt(unittest.TestCase):

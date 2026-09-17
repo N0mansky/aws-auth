@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""Pre-commit Credential & Secret Scanner for aws-auth.
+"""Pre-commit Credential, Secret & Policy Scanner for aws-auth.
 
-Scans staged git changes or repository files for sensitive credentials,
-API keys, tokens, and private keys before they can be committed.
+Scans staged git changes, commit messages, and repository files for:
+1. Sensitive credentials, API keys, tokens, and private keys.
+2. Blocked internal project names/codenames configured in .security-policy.json.
+3. Forbidden sensitive file patterns.
 
 Usage:
     python scripts/check_credentials.py [--staged | --all | --files <paths...>]
+    python scripts/check_credentials.py --commit-msg <path_to_commit_msg_file>
+    python scripts/check_credentials.py --check-commits [N]
     python scripts/check_credentials.py --install-hook
 """
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -84,6 +89,90 @@ SUPPRESSION_FLAGS = [
     "skip-secret-check",
 ]
 
+# Default fallback blocked project terms if policy file is absent
+DEFAULT_BLOCKED_TERMS = [
+    {
+        "name": "Internal Project / Account Codename",
+        "pattern": r"(?i)\b(?:confidential|internal|secret|proprietary)-(?:release|admin|prod|staging|dev)\b",
+        "description": "Internal project codenames and infrastructure identifiers are not permitted in open-source repository"
+    }
+]
+
+
+def load_security_policy() -> Dict[str, Any]:
+    """Load security policy configuration in order of privacy precedence:
+    1. Local user private directory: ~/.aws-auth/security-policy.json (never tracked in git)
+    2. Local workspace override: .security-policy.local.json or .security-policy.json (gitignored)
+    3. Repository template: .security-policy.example.json
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+
+    # Candidate locations in priority order
+    candidate_paths = [
+        Path(os.path.expanduser("~/.aws-auth/security-policy.json")),
+        repo_root / ".security-policy.local.json",
+        repo_root / ".security-policy.json",
+        repo_root / ".security-policy.example.json",
+    ]
+
+    policy_data: Dict[str, Any] = {}
+    for path in candidate_paths:
+        if path.exists():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    policy_data = json.load(f)
+                    break
+            except Exception as e:
+                print(f"⚠️  Error loading {path}: {e}", file=sys.stderr)
+
+    # Allow injecting custom blocked terms via environment variable (e.g. in CI or local shell)
+    env_terms = os.environ.get("AWS_AUTH_BLOCKED_TERMS")
+    if env_terms:
+        if "blocked_terms" not in policy_data:
+            policy_data["blocked_terms"] = list(DEFAULT_BLOCKED_TERMS)
+        for term_pat in env_terms.split(","):
+            term_pat = term_pat.strip()
+            if term_pat:
+                policy_data["blocked_terms"].append({
+                    "name": "Environment-Defined Blocked Term",
+                    "pattern": term_pat,
+                    "description": "Blocked via AWS_AUTH_BLOCKED_TERMS environment variable"
+                })
+
+    return policy_data
+
+
+def get_blocked_terms() -> List[Tuple[str, Any]]:
+    """Retrieve compiled regex patterns for blocked sensitive terms/codenames."""
+    policy = load_security_policy()
+    terms = policy.get("blocked_terms", DEFAULT_BLOCKED_TERMS)
+    compiled = []
+    for item in terms:
+        name = item.get("name", "Sensitive Term")
+        pat_str = item.get("pattern", "")
+        if pat_str:
+            try:
+                compiled.append((name, re.compile(pat_str)))
+            except re.error as e:
+                print(f"⚠️  Invalid regex in security policy ({name}): {e}", file=sys.stderr)
+    return compiled
+
+
+def get_blocked_commit_terms() -> List[Tuple[str, Any]]:
+    """Retrieve compiled regex patterns for commit message checks."""
+    policy = load_security_policy()
+    terms = policy.get("blocked_commit_terms", DEFAULT_BLOCKED_TERMS)
+    compiled = []
+    for item in terms:
+        name = item.get("name", "Sensitive Commit Term")
+        pat_str = item.get("pattern", "")
+        if pat_str:
+            try:
+                compiled.append((name, re.compile(pat_str)))
+            except re.error as e:
+                print(f"⚠️  Invalid commit regex in security policy ({name}): {e}", file=sys.stderr)
+    return compiled
+
 
 def is_suppressed(line: str) -> bool:
     """Check if the line contains an explicit suppression directive."""
@@ -109,7 +198,19 @@ def mask_secret(secret: str) -> str:
 def check_file_path(file_path: str) -> Optional[str]:
     """Check if the filename itself is a sensitive file pattern."""
     basename = os.path.basename(file_path)
-    for pattern in BLOCKED_FILE_PATTERNS:
+
+    # Check hardcoded patterns
+    patterns_to_check = list(BLOCKED_FILE_PATTERNS)
+
+    # Add custom blocked files from policy if defined
+    policy = load_security_policy()
+    for custom_pat in policy.get("blocked_files", []):
+        try:
+            patterns_to_check.append(re.compile(custom_pat, re.IGNORECASE))
+        except re.error:
+            pass
+
+    for pattern in patterns_to_check:
         if pattern.search(basename) or pattern.search(file_path):
             # Allow tests that mock these filenames if inside tests directory
             if file_path.startswith("tests/") and not os.path.exists(file_path):
@@ -119,14 +220,16 @@ def check_file_path(file_path: str) -> Optional[str]:
 
 
 def scan_content(content: str, file_path: str) -> List[Dict[str, Any]]:
-    """Scan string content for secrets and return a list of findings."""
+    """Scan string content for secrets and policy-blocked terms."""
     findings = []
     lines = content.splitlines()
+    blocked_terms = get_blocked_terms()
 
     for line_num, line in enumerate(lines, start=1):
         if is_suppressed(line):
             continue
 
+        # 1. Check Secret Patterns
         for rule_name, pattern in SECRET_PATTERNS:
             for match in pattern.finditer(line):
                 matched_str = match.group(0)
@@ -146,6 +249,64 @@ def scan_content(content: str, file_path: str) -> List[Dict[str, Any]]:
                     "snippet": line.strip()[:100],
                     "masked_match": mask_secret(matched_str),
                 })
+
+        # 2. Check Blocked Sensitive Terms / Project Policy Patterns
+        # (Exclude policy definition files and test files testing the scanner itself)
+        if not (file_path.endswith(".security-policy.json") or file_path.endswith("test_check_credentials.py") or file_path.endswith("check_credentials.py")):
+            for rule_name, pattern in blocked_terms:
+                for match in pattern.finditer(line):
+                    matched_str = match.group(0)
+                    findings.append({
+                        "file": file_path,
+                        "line_number": line_num,
+                        "rule": f"Sensitive Policy Violation: {rule_name}",
+                        "snippet": line.strip()[:100],
+                        "masked_match": mask_secret(matched_str),
+                    })
+
+    return findings
+
+
+def scan_commit_message(message: str) -> List[Dict[str, Any]]:
+    """Scan commit message text for secrets and sensitive project codenames."""
+    findings = []
+    lines = message.splitlines()
+    commit_terms = get_blocked_commit_terms()
+
+    for line_num, line in enumerate(lines, start=1):
+        # Ignore git comments starting with #
+        if line.strip().startswith("#"):
+            continue
+
+        if is_suppressed(line):
+            continue
+
+        # 1. Check Secret Patterns
+        for rule_name, pattern in SECRET_PATTERNS:
+            for match in pattern.finditer(line):
+                matched_str = match.group(0)
+                if is_known_safe(matched_str):
+                    continue
+                findings.append({
+                    "file": "COMMIT_MSG",
+                    "line_number": line_num,
+                    "rule": rule_name,
+                    "snippet": line.strip()[:100],
+                    "masked_match": mask_secret(matched_str),
+                })
+
+        # 2. Check Blocked Commit Terms
+        for rule_name, pattern in commit_terms:
+            for match in pattern.finditer(line):
+                matched_str = match.group(0)
+                findings.append({
+                    "file": "COMMIT_MSG",
+                    "line_number": line_num,
+                    "rule": f"Sensitive Commit Policy Violation: {rule_name}",
+                    "snippet": line.strip()[:100],
+                    "masked_match": mask_secret(matched_str),
+                })
+
     return findings
 
 
@@ -203,46 +364,159 @@ def get_all_tracked_files() -> List[str]:
 
 
 def install_git_hook() -> bool:
-    """Install this scanner as a pre-commit git hook."""
+    """Install pre-commit, commit-msg, and pre-push git hooks."""
     repo_root = Path(__file__).resolve().parent.parent
     hooks_dir = repo_root / ".githooks"
     hooks_dir.mkdir(exist_ok=True)
-    hook_path = hooks_dir / "pre-commit"
 
-    hook_content = """#!/bin/sh
-# aws-auth credential pre-commit check
+    # 1. pre-commit hook
+    pre_commit_path = hooks_dir / "pre-commit"
+    pre_commit_content = """#!/bin/sh
+# aws-auth credential & policy pre-commit check
 python3 scripts/check_credentials.py --staged
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -ne 0 ]; then
     echo ""
-    echo "❌ Pre-commit check failed: Secrets or credentials detected."
-    echo "   Please remove the secrets or add '# pragma: allowlist secret' if it is a false positive."
+    echo "❌ Pre-commit check failed: Secrets or sensitive policy violations detected."
+    echo "   Please review findings and resolve them before committing."
     exit 1
 fi
 exit 0
 """
-    hook_path.write_text(hook_content, encoding="utf-8")
+    pre_commit_path.write_text(pre_commit_content, encoding="utf-8")
     try:
-        os.chmod(hook_path, 0o755)  # nosec B103
+        os.chmod(pre_commit_path, 0o755)  # nosec B103
+    except Exception:
+        pass
+
+    # 2. commit-msg hook
+    commit_msg_path = hooks_dir / "commit-msg"
+    commit_msg_content = """#!/bin/sh
+# aws-auth commit message policy check
+python3 scripts/check_credentials.py --commit-msg "$1"
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "❌ Commit-msg check failed: Commit message contains sensitive terms or credentials."
+    exit 1
+fi
+exit 0
+"""
+    commit_msg_path.write_text(commit_msg_content, encoding="utf-8")
+    try:
+        os.chmod(commit_msg_path, 0o755)  # nosec B103
+    except Exception:
+        pass
+
+    # 3. pre-push hook
+    pre_push_path = hooks_dir / "pre-push"
+    pre_push_content = """#!/bin/sh
+# aws-auth pre-push repository & policy scan
+python3 scripts/check_credentials.py --all
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "❌ Pre-push check failed: Secrets or sensitive policy violations detected in tracked files."
+    exit 1
+fi
+exit 0
+"""
+    pre_push_path.write_text(pre_push_content, encoding="utf-8")
+    try:
+        os.chmod(pre_push_path, 0o755)  # nosec B103
     except Exception:
         pass
 
     # Configure git core.hooksPath
     subprocess.run(["git", "config", "core.hooksPath", ".githooks"], cwd=repo_root, check=False)
 
-    # Also write to .git/hooks/pre-commit for backward compatibility
+    # Also write to .git/hooks for backward compatibility
     git_hooks_dir = repo_root / ".git" / "hooks"
     if git_hooks_dir.exists():
-        git_hook_file = git_hooks_dir / "pre-commit"
-        git_hook_file.write_text(hook_content, encoding="utf-8")
-        try:
-            os.chmod(git_hook_file, 0o755)  # nosec B103
-        except Exception:
-            pass
+        for name, content in [
+            ("pre-commit", pre_commit_content),
+            ("commit-msg", commit_msg_content),
+            ("pre-push", pre_push_content),
+        ]:
+            target = git_hooks_dir / name
+            target.write_text(content, encoding="utf-8")
+            try:
+                os.chmod(target, 0o755)  # nosec B103
+            except Exception:
+                pass
 
-    print("✅ Pre-commit hook successfully installed in .githooks/pre-commit and configured in git!")
+    print("✅ Git hooks (pre-commit, commit-msg, pre-push) successfully installed in .githooks and configured in git!")
     return True
+
+
+def run_commit_msg_scanner(commit_msg_file: str) -> int:
+    """Run check on a commit message file."""
+    if not os.path.exists(commit_msg_file):
+        print(f"⚠️  Commit message file not found: {commit_msg_file}", file=sys.stderr)
+        return 1
+
+    with open(commit_msg_file, "r", encoding="utf-8", errors="ignore") as f:
+        message = f.read()
+
+    findings = scan_commit_message(message)
+    if findings:
+        print("\n" + "=" * 70)
+        print("🚨  SECURITY ALERT: Commit Message Contains Sensitive Data or Policy Violation!")
+        print("=" * 70)
+        for finding in findings:
+            print(f"\n   📄 Location: Line {finding['line_number']}")
+            print(f"      Rule: {finding['rule']}")
+            print(f"      Match: {finding['masked_match']}")
+            print(f"      Text: {finding['snippet']}")
+        print("\n" + "─" * 70)
+        print("💡 How to fix:")
+        print("   Remove internal project names, codenames, or credentials from your commit message.")
+        print("=" * 70 + "\n")
+        return 1
+
+    print("🛡️  Commit message scan passed: No sensitive terms or secrets detected.")
+    return 0
+
+
+def run_commits_history_scanner(count: int = 5) -> int:
+    """Scan recent commit messages and diffs in HEAD."""
+    try:
+        res = subprocess.run(
+            ["git", "log", f"-n{count}", "--format=COMMIT:%H%n%B%nDIFF:"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+    except Exception as e:
+        print(f"⚠️  Error reading git log: {e}", file=sys.stderr)
+        return 1
+
+    raw_commits = res.stdout.split("COMMIT:")
+    has_violations = False
+
+    for c in raw_commits:
+        if not c.strip():
+            continue
+        parts = c.split("DIFF:")
+        header_and_msg = parts[0]
+        commit_hash = header_and_msg.splitlines()[0].strip() if header_and_msg.splitlines() else "UNKNOWN"
+        msg = "\n".join(header_and_msg.splitlines()[1:])
+
+        findings = scan_commit_message(msg)
+        if findings:
+            has_violations = True
+            print(f"\n🚨 Sensitive data in commit {commit_hash[:10]}:")
+            for f in findings:
+                print(f"   • {f['rule']}: {f['snippet']}")
+
+    if has_violations:
+        return 1
+
+    print(f"🛡️  Last {count} commits verified: No sensitive terms or secrets in commit log.")
+    return 0
 
 
 def run_scanner(files_to_check: List[str], is_diff_mode: bool = False) -> int:
@@ -278,7 +552,7 @@ def run_scanner(files_to_check: List[str], is_diff_mode: bool = False) -> int:
     # Report results
     if blocked_files or all_findings:
         print("\n" + "=" * 70)
-        print("🚨  SECURITY ALERT: Potential Secrets / Credentials Detected!")
+        print("🚨  SECURITY ALERT: Potential Secrets or Policy Violations Detected!")
         print("=" * 70)
 
         if blocked_files:
@@ -287,7 +561,7 @@ def run_scanner(files_to_check: List[str], is_diff_mode: bool = False) -> int:
                 print(f"   • {issue}")
 
         if all_findings:
-            print("\n🔑 Detected Credentials:")
+            print("\n🔑 Detected Violations:")
             for finding in all_findings:
                 print(f"\n   📄 File: {finding['file']}:{finding['line_number']}")
                 print(f"      Rule: {finding['rule']}")
@@ -296,28 +570,37 @@ def run_scanner(files_to_check: List[str], is_diff_mode: bool = False) -> int:
 
         print("\n" + "─" * 70)
         print("💡 How to fix:")
-        print("   1. Remove actual secrets/credentials before committing.")
+        print("   1. Remove actual secrets or forbidden project names before committing.")
         print("   2. For legitimate placeholder/test values, add an inline suppression:")
         print("      # pragma: allowlist secret")
+        print("   3. Configure custom policies in .security-policy.json if necessary.")
         print("=" * 70 + "\n")
         return 1
 
-    print("🛡️  Credential scan passed: No secrets or sensitive files detected.")
+    print("🛡️  Security policy & credential scan passed: No secrets or policy violations detected.")
     return 0
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Pre-commit credential and secret scanner for aws-auth.")
+    parser = argparse.ArgumentParser(description="Pre-commit credential, secret, and policy scanner for aws-auth.")
     parser.add_argument("--staged", action="store_true", help="Scan only git staged changes (default)")
     parser.add_argument("--all", action="store_true", help="Scan all tracked files in repository")
     parser.add_argument("--files", nargs="+", help="Scan specific files")
-    parser.add_argument("--install-hook", action="store_true", help="Install git pre-commit hook")
+    parser.add_argument("--commit-msg", help="Scan a git commit message file")
+    parser.add_argument("--check-commits", type=int, nargs="?", const=5, help="Scan the last N commit messages in history")
+    parser.add_argument("--install-hook", action="store_true", help="Install git pre-commit, commit-msg, and pre-push hooks")
 
     args = parser.parse_args()
 
     if args.install_hook:
         install_git_hook()
         return 0
+
+    if args.commit_msg:
+        return run_commit_msg_scanner(args.commit_msg)
+
+    if args.check_commits is not None:
+        return run_commits_history_scanner(args.check_commits)
 
     if args.files:
         return run_scanner(args.files, is_diff_mode=False)

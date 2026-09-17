@@ -46,8 +46,8 @@ aws_auth/
 
 ### `credentials_manager.py` - Credentials Management
 - **Class**: `CredentialsManager`
-- **Purpose**: Manages standard AWS credentials files (`~/.aws/credentials`)
-- **Features**: Safe INI writing, multi-profile support, default profile toggling
+- **Purpose**: Manages standard AWS credentials files (`~/.aws/credentials`) and active profile state
+- **Features**: Safe INI writing, named profile isolation, `~/.aws-auth/current_profile` tracking, multi-profile support, default profile protection (opt-in only)
 
 ### `ec2_manager.py` - EC2 & SSM Session Integration
 - **Class**: `EC2Manager`

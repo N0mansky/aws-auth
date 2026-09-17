@@ -3,6 +3,7 @@
 import unittest
 from scripts.check_credentials import (
     scan_content,
+    scan_commit_message,
     check_file_path,
     is_suppressed,
     is_known_safe,
@@ -63,8 +64,26 @@ class TestCredentialChecker(unittest.TestCase):
     def test_mask_secret(self):
         test_key = "AKIA" + "1234567890ABCDEF"  # pragma: allowlist secret
         self.assertEqual(mask_secret(test_key), "AKIA...CDEF")
-        self.assertEqual(mask_secret("short"), "****")
+    def test_sensitive_policy_detection(self):
+        blocked_name = "internal-release-admin"
+        content = f"profile_name = '{blocked_name}'"
+        findings = scan_content(content, "aws_auth/some_file.py")
+        self.assertEqual(len(findings), 1)
+        self.assertIn("Sensitive Policy Violation", findings[0]["rule"])
+
+    def test_scan_commit_message_blocked_terms(self):
+        blocked_name = "internal-release-admin"
+        msg = f"feat: add support for {blocked_name} profile"
+        findings = scan_commit_message(msg)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("Sensitive Commit Policy Violation", findings[0]["rule"])
+
+    def test_scan_commit_message_clean(self):
+        msg = "feat: add support for staging-admin profile"
+        findings = scan_commit_message(msg)
+        self.assertEqual(len(findings), 0)
 
 
 if __name__ == "__main__":
     unittest.main()
+

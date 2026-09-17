@@ -72,8 +72,32 @@ chmod +x aws-auth
 sudo mv aws-auth /usr/local/bin/
 ```
 
-### b. Execute aws-auth
-- After installing or downloading `aws-auth`, run the executable to complete the setup:
+### b. Shell Integration (`AWS_PROFILE`)
+To automatically export `AWS_PROFILE` in your terminal session when switching profiles or logging in, add the wrapper function to your `~/.zshrc` or `~/.bashrc`:
+
+```sh
+# Add to ~/.zshrc or ~/.bashrc
+if [ -f ~/.aws-auth/current_profile ]; then
+    export AWS_PROFILE=$(< ~/.aws-auth/current_profile)
+fi
+
+aws-auth() {
+    command /usr/local/bin/aws-auth "$@"
+    local ret=$?
+    if [ $ret -eq 0 ] && [ -f ~/.aws-auth/current_profile ]; then
+        export AWS_PROFILE=$(< ~/.aws-auth/current_profile)
+    fi
+    return $ret
+}
+```
+
+Reload your shell:
+```sh
+source ~/.zshrc   # or source ~/.bashrc
+```
+
+### c. Execute aws-auth
+- Run the executable to authenticate:
 
 ```sh
 aws-auth

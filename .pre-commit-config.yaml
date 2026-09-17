@@ -8,6 +8,12 @@ repos:
         language: system
         stages: [commit]
 
+      - id: commit-msg-check
+        name: AWS Auth Commit Message Policy Scanner
+        entry: python3 scripts/check_credentials.py --commit-msg
+        language: system
+        stages: [commit-msg]
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:

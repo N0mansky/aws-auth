@@ -1,0 +1,11 @@
+#!/bin/sh
+# aws-auth commit message policy check
+python3 scripts/check_credentials.py --commit-msg "$1"
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "❌ Commit-msg check failed: Commit message contains sensitive terms or credentials."
+    exit 1
+fi
+exit 0

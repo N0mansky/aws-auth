@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "policy_name": "aws-auth-security-policy-example",
+  "version": "1.0",
+  "description": "Template for local security policy and sensitive term protection. Copy to ~/.aws-auth/security-policy.json or .security-policy.json to enable.",
+  "blocked_terms": [
+    {
+      "name": "Internal Project / Account Codename",
+      "pattern": "(?i)\\b(?:myproject|internal|company)-(?:release|admin|prod|staging|dev)\\b",
+      "description": "Internal project codenames and infrastructure identifiers are not permitted in repository files"
+    }
+  ],
+  "blocked_commit_terms": [
+    {
+      "name": "Internal Project / Account Codename",
+      "pattern": "(?i)\\b(?:myproject|internal|company)-(?:release|admin|prod|staging|dev)\\b",
+      "description": "Internal project codenames and infrastructure identifiers are not permitted in commit messages"
+    }
+  ],
+  "blocked_files": [
+    "^.*\\.pem$",
+    "^.*\\.key$",
+    "^.*\\.p12$",
+    "^.*\\.pfx$",
+    "^.*sso_access_token\\.json$",
+    "^.*cached_token_.*\\.json$",
+    "^.*\\.env.*$",
+    "^.*id_rsa(\\.pub)?$",
+    "^.*id_ed25519(\\.pub)?$"
+  ]
+}
