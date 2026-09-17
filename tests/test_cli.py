@@ -79,7 +79,7 @@ class TestCLIParser(unittest.TestCase):
         self.assertTrue(args.write_default)
 
     def test_version_string(self):
-        self.assertEqual(__version__, "1.2.0")
+        self.assertEqual(__version__, "1.2.1")
 
 
 class TestUserInterfacePrompt(unittest.TestCase):
