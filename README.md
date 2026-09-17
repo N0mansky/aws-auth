@@ -260,12 +260,27 @@ aws-auth --credential-process my-profile
 
 ---
 
+## 🛠️ Development & Testing
+
+Unified commands are provided via the [Makefile](Makefile):
+
+```bash
+make help          # View all available targets
+make venv          # Initialize virtual environment and install dev dependencies
+make test          # Run automated unit tests with pytest
+make check         # Run full quality gate (secret scanning, Bandit SAST, audit, tests)
+make build         # Compile standalone PyInstaller binary
+```
+
+---
+
 ## 🤝 Contributing
 
-Contributions are welcome! Please check out [CONTRIBUTING.md](CONTRIBUTING.md) for details on setting up a development environment and running tests.
+Contributions are welcome! Please check out [CONTRIBUTING.md](CONTRIBUTING.md) for details on setting up a development environment, testing standards, and security policies.
 
 ---
 
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
+

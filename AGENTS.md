@@ -60,25 +60,18 @@ Maintain Single Responsibility across modules in `aws_auth/`:
 ---
 
 ## 🧪 Testing & Verification Requirements
-Every new feature or bugfix must include automated tests:
-1. **Unit Tests**: Place in `tests/` using `unittest` or `pytest`. Mock all external AWS network calls (`boto3.client`, `requests`, STS, SSO).
-2. **Secret & Policy Scan**:
+Every new feature or bugfix must include automated tests and pass all quality gates:
+1. **Unified Quality Gate**:
    ```bash
-   python scripts/check_credentials.py --all
-   python scripts/check_credentials.py --check-commits 5
+   make check         # Runs secret scan, SAST security scan, dependency audit, and unit tests
    ```
-3. **SAST Security Scan**:
-   ```bash
-   bandit -r aws_auth scripts -ll
-   ```
-4. **Test Suite Execution**:
-   ```bash
-   python -m unittest discover tests -v
-   # or
-   pytest -v
-   ```
-5. **Standalone Binary Build**:
-   Ensure `./install.sh` builds and installs cleanly without warnings.
+2. **Individual Targets**:
+   - Unit Tests: `make test` (`pytest -v`)
+   - Secret & Policy Scan: `make check-secrets` and `make check-commits`
+   - SAST Security Scan: `make lint` (`bandit -r aws_auth scripts -ll`)
+   - Dependency CVE Audit: `make audit` (`pip-audit`)
+3. **Standalone Binary Build**:
+   Ensure `make build` (or `./install.sh`) builds and installs cleanly without warnings.
 
 ---
 
