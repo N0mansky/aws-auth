@@ -221,7 +221,7 @@ class TestAuthManagerDevicePolling(unittest.TestCase):
         self.assertIn("Login timed out", str(ctx.exception))
 
     @patch("sys.stderr.isatty", return_value=False)
-    @patch("time.time")
+    @patch("aws_auth.auth_manager.time.time")
     def test_polling_device_code_expired_before_auth(self, mock_time, mock_isatty):
         self.manager.sso_client.register_client.return_value = ("client-123", "secret-456")
         self.manager.sso_client.start_device_authorization.return_value = {
@@ -232,8 +232,8 @@ class TestAuthManagerDevicePolling(unittest.TestCase):
             "interval": 1,
         }
 
-        # First call time.time() is for expires calculation, second call exceeds expires
-        mock_time.side_effect = [100.0, 200.0]
+        # First call time.time() is for expires calculation, subsequent calls exceed expires
+        mock_time.side_effect = [100.0, 200.0, 200.0, 200.0]
 
         with self.assertRaises(RuntimeError) as ctx:
             self.manager._perform_sso_login()
