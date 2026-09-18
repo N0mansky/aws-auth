@@ -162,14 +162,12 @@ class EKSManager:
             if alias:
                 cmd.extend(['--alias', alias])
             
-            print(f"\n🔄 Updating kubeconfig for cluster '{cluster_name}'...")
-            print(f"Command: {' '.join(cmd)}")
+            logger.debug(f"Updating kubeconfig command: {' '.join(cmd)}")
             
             # Execute command
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
             
             if result.returncode == 0:
-                print(f"✅ Successfully updated kubeconfig for cluster '{cluster_name}'")
                 target_context = alias if alias else f"arn:aws:eks:{region}:{self._get_account_id()}:cluster/{cluster_name}"
                 if shutil.which('kubectl'):
                     subprocess.run(
@@ -177,17 +175,10 @@ class EKSManager:
                         capture_output=True,
                         check=False
                     )
-                if alias:
-                    print(f"📝 Cluster context alias: {alias}")
-                    print(f"📝 Using AWS profile: {self.profile_name or 'default'}")
-                else:
-                    account_id = self._get_account_id()
-                    cluster_arn = f"arn:aws:eks:{region}:{account_id}:cluster/{cluster_name}"
-                    print(f"📝 Cluster context: {cluster_arn}")
                 return True
             else:
                 logger.error(f"Failed to update kubeconfig: {result.stderr}")
-                print(f"❌ Failed to update kubeconfig: {result.stderr}")
+                print(f"❌ Failed to update kubeconfig: {result.stderr.strip()}")
                 return False
                 
         except Exception as e:
@@ -196,9 +187,8 @@ class EKSManager:
             return False
     
     def connect_to_cluster(self, cluster: Dict[str, Any], region: str) -> bool:
-        """Connect to EKS cluster and optionally run kubectl commands."""
+        """Connect to EKS cluster by updating kubeconfig."""
         cluster_name = cluster['name']
-        cluster_arn = cluster['arn']
         
         # Check prerequisites
         if not shutil.which('kubectl'):
@@ -207,52 +197,20 @@ class EKSManager:
             return False
         
         # Create a unique context alias that includes profile name to avoid conflicts
-        # Format: {profile}-{cluster-name} or just {cluster-name} if using default profile
+        # Format: {profile}-{cluster-name} or just default-{cluster-name}
         if self.profile_name and self.profile_name != 'default':
             context_alias = f"{self.profile_name}-{cluster_name}"
         else:
-            # For default profile, use cluster name with a prefix to distinguish
             context_alias = f"default-{cluster_name}"
         
-        print(f"\n🚀 Connecting to EKS cluster '{cluster_name}'...")
-        print(f"📝 Using profile: {self.profile_name or 'default'}")
-        print(f"📝 Creating context alias: {context_alias}")
-        
-        # Update kubeconfig with unique alias that includes profile name
-        # This ensures each cluster has its own isolated context tied to its profile
+        print(f"\n🔄 Updating kubeconfig for cluster '{cluster_name}'...")
         if not self.update_kubeconfig(cluster_name, region, context_alias):
             return False
         
-        try:
-            # Test connection using the unique context alias
-            print(f"\n🔍 Testing connection to cluster...")
-            test_cmd = ['kubectl', 'cluster-info', '--context', context_alias]
-            result = subprocess.run(test_cmd, capture_output=True, text=True, timeout=30)
-            
-            if result.returncode == 0:
-                print("✅ Successfully connected to cluster!")
-                print("\n📊 Cluster Info:")
-                print(result.stdout)
-                print(f"\n🔧 Usage with this cluster:")
-                print(f"   kubectl --context {context_alias} <command>")
-                print(f"\n💡 This context is isolated to profile '{self.profile_name or 'default'}'")
-                print(f"   You can use multiple clusters simultaneously with different profiles!")
-                return True
-            else:
-                print(f"❌ Failed to connect to cluster: {result.stderr}")
-                print("💡 Common issues:")
-                print("   - No permissions to access the cluster")
-                print("   - Cluster is not in ACTIVE state")
-                print("   - Network connectivity issues")
-                return False
-                
-        except subprocess.TimeoutExpired:
-            print("⏰ Connection test timed out. Cluster might be unreachable.")
-            return False
-        except Exception as e:
-            logger.error(f"Error testing cluster connection: {e}")
-            print(f"❌ Error testing connection: {e}")
-            return False
+        print(f"✅ Successfully configured access to cluster '{cluster_name}'")
+        print(f"📝 Context: {context_alias}")
+        print(f"🔧 Example: kubectl get nodes --context {context_alias}")
+        return True
     
     def _get_account_id(self) -> str:
         """Get current AWS account ID."""

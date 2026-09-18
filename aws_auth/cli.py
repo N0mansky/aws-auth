@@ -223,9 +223,7 @@ def offer_resource_exploration(profile_name: str, region: str) -> None:
             if clusters:
                 selected = ui.select_eks_cluster(clusters)
                 if selected and selected.get('status') == 'ACTIVE':
-                    if eks_mgr.connect_to_cluster(selected, region):
-                        print(f"\n✅ Successfully configured access to cluster '{selected['name']}'")
-                        print(f"🔧 Example: kubectl get nodes --context {selected.get('arn', '')}")
+                    eks_mgr.connect_to_cluster(selected, region)
         elif choice == '2':
             ec2_mgr = EC2Manager(profile_name)
             print(f"\n🔍 Loading EC2 instances from {region}...")
@@ -643,12 +641,7 @@ def main() -> None:
                                 ui.display_cluster_details(selected_cluster)
                                 confirm = input(f"\n🚀 Connect to cluster '{selected_cluster['name']}'? (Y/n): ").strip().lower()
                                 if confirm in ['', 'y', 'yes']:
-                                    success = eks_manager.connect_to_cluster(selected_cluster, args.region)
-                                if success:
-                                    print(f"\n✅ Successfully configured access to cluster '{selected_cluster['name']}'")
-                                    print(f"🔧 Example: kubectl get nodes --context {selected_cluster['arn']}")
-                                else:
-                                    print(f"\n❌ Failed to connect to cluster '{selected_cluster['name']}'")
+                                    eks_manager.connect_to_cluster(selected_cluster, args.region)
             except Exception as e:
                 if args.json:
                     print(json.dumps({"success": False, "error": str(e)}, indent=2))
