@@ -170,6 +170,13 @@ class EKSManager:
             
             if result.returncode == 0:
                 print(f"✅ Successfully updated kubeconfig for cluster '{cluster_name}'")
+                target_context = alias if alias else f"arn:aws:eks:{region}:{self._get_account_id()}:cluster/{cluster_name}"
+                if shutil.which('kubectl'):
+                    subprocess.run(
+                        ['kubectl', 'config', 'set-context', target_context, '--namespace=default'],
+                        capture_output=True,
+                        check=False
+                    )
                 if alias:
                     print(f"📝 Cluster context alias: {alias}")
                     print(f"📝 Using AWS profile: {self.profile_name or 'default'}")
