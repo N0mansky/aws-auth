@@ -748,3 +748,27 @@ class UserInterface:
                 print(f"Security Groups: {len(vpc_config['securityGroupIds'])} configured")
         
         print("─" * 60)
+
+    @staticmethod
+    def format_terminal_link(url: str, label: Optional[str] = None) -> str:
+        """Format a URL as a clickable terminal hyperlink using OSC 8 escape sequences."""
+        return format_terminal_link(url, label)
+
+
+def format_terminal_link(url: str, label: Optional[str] = None) -> str:
+    """Format a URL as a clickable terminal hyperlink using OSC 8 escape sequences.
+    
+    If running in an interactive terminal, wraps the URL in OSC 8 sequences
+    so that the entire URL (including fragment and query parameters like
+    ?user_code=...) is treated as a single clickable hyperlink.
+    """
+    if not url:
+        return ""
+    if url == "N/A":
+        return "N/A"
+    display = label or url
+    if os.environ.get("TERM") == "dumb":
+        return display
+    if sys.stdout.isatty() or sys.stderr.isatty():
+        return f"\033]8;;{url}\033\\{display}\033]8;;\033\\"
+    return display

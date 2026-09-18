@@ -32,6 +32,11 @@ class Config:
         )
         self.CLIENT_NAME = user_config.get("client_name") or "aws-auth-sso-app"
         self.SESSION_DURATION_SECONDS = 43200  # 12 hours fallback
+        self.MAX_POLLING_SECONDS = int(
+            os.environ.get("AWS_AUTH_MAX_POLLING_SECONDS")
+            or user_config.get("max_polling_seconds")
+            or 120
+        )
         
         # Client registration parameters
         self.CLIENT_TYPE = "public"

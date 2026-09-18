@@ -13,6 +13,8 @@ import platform
 from typing import Optional
 from urllib.parse import urlparse
 
+from .user_interface import format_terminal_link
+
 logger = logging.getLogger(__name__)
 
 
@@ -159,8 +161,8 @@ def open_url_in_browser(url: str) -> bool:
             return True
         else:
             logger.warning("⚠️  Failed to open Windows browser automatically")
-            logger.info(f"   Please manually open this URL in your browser:")
-            logger.info(f"   {url}")
+            logger.info("   Please manually open this URL in your browser:")
+            logger.info(f"   {format_terminal_link(url)}")
             return False
     
     # Not WSL - use platform-specific method
@@ -173,8 +175,8 @@ def open_url_in_browser(url: str) -> bool:
             return True
         else:
             logger.warning("⚠️  Failed to open browser automatically")
-            logger.info(f"   Please manually open this URL in your browser:")
-            logger.info(f"   {url}")
+            logger.info("   Please manually open this URL in your browser:")
+            logger.info(f"   {format_terminal_link(url)}")
             return False
     elif system == 'darwin':
         logger.info("🌐 Opening macOS browser...")
@@ -183,8 +185,8 @@ def open_url_in_browser(url: str) -> bool:
             return True
         else:
             logger.warning("⚠️  Failed to open browser automatically")
-            logger.info(f"   Please manually open this URL in your browser:")
-            logger.info(f"   {url}")
+            logger.info("   Please manually open this URL in your browser:")
+            logger.info(f"   {format_terminal_link(url)}")
             return False
     elif system == 'windows':
         logger.info("🌐 Opening Windows browser...")
@@ -193,13 +195,13 @@ def open_url_in_browser(url: str) -> bool:
             return True
         else:
             logger.warning("⚠️  Failed to open browser automatically")
-            logger.info(f"   Please manually open this URL in your browser:")
-            logger.info(f"   {url}")
+            logger.info("   Please manually open this URL in your browser:")
+            logger.info(f"   {format_terminal_link(url)}")
             return False
     else:
         logger.warning(f"⚠️  Unsupported platform: {system}")
-        logger.info(f"   Please manually open this URL in your browser:")
-        logger.info(f"   {url}")
+        logger.info("   Please manually open this URL in your browser:")
+        logger.info(f"   {format_terminal_link(url)}")
         return False
 
 
@@ -234,10 +236,16 @@ class LocalBrowserManager:
             logger.info("   The polling will automatically detect completion")
             logger.info("=" * 70)
         else:
+            user_code = kwargs.get("user_code")
             logger.info("")
             logger.info("=" * 70)
             logger.info("📋 Please complete authentication:")
-            logger.info(f"   1. Open this URL in your browser: {aws_sso_url}")
-            logger.info("   2. Complete the authentication (browser will use your cookies)")
-            logger.info("   3. After you see 'You can close this window', return here")
+            logger.info("   1. Open this URL in your browser:")
+            logger.info(f"      {format_terminal_link(aws_sso_url)}")
+            if user_code:
+                logger.info(f"   2. Confirm user code: {user_code}")
+                logger.info("   3. After you see 'You can close this window', return here")
+            else:
+                logger.info("   2. Complete the authentication (browser will use your cookies)")
+                logger.info("   3. After you see 'You can close this window', return here")
             logger.info("=" * 70)

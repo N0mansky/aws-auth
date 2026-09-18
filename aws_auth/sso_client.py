@@ -198,8 +198,12 @@ class SSOClient:
             return response
             
         except Exception as e:
-            logger.error(f"Failed to create token with {grant_type}: {e}")
-            self._handle_create_token_exceptions(e)
+            exception_name = e.__class__.__name__
+            if "AuthorizationPendingException" in exception_name or "SlowDownException" in exception_name:
+                self._handle_create_token_exceptions(e)
+            else:
+                logger.error(f"Failed to create token with {grant_type}: {e}")
+                self._handle_create_token_exceptions(e)
             raise
     
     def create_device_token(self, client_id: str, client_secret: str, device_code: str) -> Dict[str, Any]:
@@ -260,7 +264,7 @@ class SSOClient:
         elif "AuthorizationPendingException" in exception_name:
             logger.debug("Authorization pending: The authorization request is still pending")
         elif "SlowDownException" in exception_name:
-            logger.error("Too many requests: Client is making requests too frequently")
+            logger.debug("Too many requests: Client is making requests too frequently (backing off)")
         elif "AccessDeniedException" in exception_name:
             logger.error("Access denied: The client does not have permission to perform this action")
         elif "ExpiredTokenException" in exception_name:

@@ -79,7 +79,7 @@ class TestCLIParser(unittest.TestCase):
         self.assertTrue(args.write_default)
 
     def test_version_string(self):
-        self.assertEqual(__version__, "1.2.2")
+        self.assertEqual(__version__, "1.2.3")
 
 
 class TestUserInterfacePrompt(unittest.TestCase):
@@ -134,6 +134,37 @@ class TestUserInterfacePrompt(unittest.TestCase):
     def test_show_profile_menu_defaults_to_1(self, mock_input):
         choice = UserInterface.show_profile_menu()
         self.assertEqual(choice, '1')
+
+
+class TestFormatTerminalLink(unittest.TestCase):
+    """Tests for OSC 8 clickable terminal link formatting."""
+
+    def test_empty_or_na_url(self):
+        self.assertEqual(UserInterface.format_terminal_link(""), "")
+        self.assertEqual(UserInterface.format_terminal_link("N/A"), "N/A")
+
+    @patch("sys.stdout.isatty", return_value=True)
+    def test_terminal_link_osc8_when_tty(self, mock_isatty):
+        url = "https://example.awsapps.com/start/#/device?user_code=ABCD-1234"
+        link = UserInterface.format_terminal_link(url)
+        self.assertIn("\033]8;;", link)
+        self.assertIn(url, link)
+        self.assertTrue(link.startswith("\033]8;;"))
+        self.assertTrue(link.endswith("\033]8;;\033\\"))
+
+    @patch("sys.stdout.isatty", return_value=False)
+    @patch("sys.stderr.isatty", return_value=False)
+    def test_terminal_link_plain_when_non_tty(self, mock_stderr_isatty, mock_stdout_isatty):
+        url = "https://example.awsapps.com/start/#/device?user_code=ABCD-1234"
+        link = UserInterface.format_terminal_link(url)
+        self.assertEqual(link, url)
+
+    @patch.dict("os.environ", {"TERM": "dumb"})
+    def test_terminal_link_plain_when_term_dumb(self):
+        url = "https://example.awsapps.com/start/#/device?user_code=ABCD-1234"
+        link = UserInterface.format_terminal_link(url)
+        self.assertEqual(link, url)
+
 
 if __name__ == "__main__":
     unittest.main()

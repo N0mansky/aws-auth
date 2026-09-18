@@ -1,8 +1,11 @@
 """Main authentication manager for AWS SSO."""
 
 import os
+import sys
 import time
+import math
 import logging
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, Dict, Any, List, Tuple
 
@@ -11,7 +14,7 @@ from .token_manager import TokenManager
 from .local_browser_manager import LocalBrowserManager
 from .sso_client import SSOClient
 from .credentials_manager import CredentialsManager
-from .user_interface import UserInterface
+from .user_interface import UserInterface, format_terminal_link
 from .ec2_manager import EC2Manager
 from .eks_manager import EKSManager
 
@@ -105,54 +108,87 @@ class AuthManager:
         logger.info("🔐 Starting AWS SSO device authorization...")
         logger.info("   Your browser will open - complete authentication there (uses your cookies/sessions)")
         authz = self.sso_client.start_device_authorization(client_id, client_secret)
+        url = authz.get("verificationUriComplete") or authz.get("verificationUri", "N/A")
         logger.info(f"   Device code: {authz.get('userCode', 'N/A')}")
-        logger.info(f"   Visit: {authz.get('verificationUriComplete', 'N/A')[:80]}...")
+        logger.info(f"   Visit: {format_terminal_link(url)}")
         
         # Perform browser login (opens local browser)
-        self.browser_manager.perform_sso_login(authz["verificationUriComplete"])
+        self.browser_manager.perform_sso_login(
+            authz["verificationUriComplete"],
+            user_code=authz.get("userCode")
+        )
         
-        # Poll for token
-        expires = time.time() + authz["expiresIn"]
-        interval = authz["interval"]
+        # Poll for token (cap maximum waiting time to MAX_POLLING_SECONDS, default 120s)
+        max_wait = getattr(self.config, "MAX_POLLING_SECONDS", 120)
+        if not isinstance(max_wait, (int, float)):
+            max_wait = 120
+        raw_expires = authz.get("expiresIn", max_wait)
+        expires_in = min(raw_expires if isinstance(raw_expires, (int, float)) else max_wait, max_wait)
+        expires = time.time() + expires_in
+        interval = authz.get("interval", 1)
         poll_count = 0
+        is_tty = sys.stderr.isatty()
 
-        logger.info("Polling for device authorization token...")
-        while time.time() < expires:
-            try:
-                token_response = self.sso_client.create_device_token(
-                    client_id, client_secret, authz["deviceCode"]
-                )
-                access_token = token_response["accessToken"]
-                refresh_token = token_response.get("refreshToken")
-                expires_in = token_response.get("expiresIn")
-                if expires_in is None:
-                    expires_in = self.config.SESSION_DURATION_SECONDS
-                    logger.warning(f"AWS did not return expiresIn, using fallback: {expires_in} seconds")
-                logger.info(f"SSO login complete - token expires in {expires_in} seconds ({expires_in/3600:.1f} hours)")
-                
-                # Log refresh token status
-                if refresh_token:
-                    logger.info("✅ Refresh token received - next login can skip device code if token is still valid")
-                    logger.info("   (Browser cookies will still skip Microsoft authentication)")
-                else:
-                    logger.warning("⚠️  No refresh token received from AWS SSO")
-                    logger.warning("   Next login will require new device code (but browser cookies will skip Microsoft login)")
-                
-                self.token_manager.cache_sso_access_token(access_token, expires_in, refresh_token)
-                return access_token
-            except self.sso_client.oidc_client.exceptions.AuthorizationPendingException:
-                poll_count += 1
-                # Show progress every 3 polls to avoid spam
-                if poll_count % 3 == 0:
-                    remaining = int(expires - time.time())
-                    logger.info(f"⏳ Still waiting... ({remaining}s remaining)")
-                time.sleep(interval)
-            except self.sso_client.oidc_client.exceptions.ExpiredTokenException:
-                raise RuntimeError("Login timed out")
-            except Exception as e:
-                raise RuntimeError(f"Login failed: {e}")
+        access_token = None
+        refresh_token = None
+        expires_in = None
 
-        raise RuntimeError("Device code expired before authorization")
+        try:
+            while time.time() < expires:
+                remaining = max(0, int(math.ceil(expires - time.time())))
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                if is_tty:
+                    sys.stderr.write(
+                        f"\r[{now_str}] ⏳ Polling for device authorization token... ({remaining}s remaining)   "
+                    )
+                    sys.stderr.flush()
+                elif poll_count == 0 or poll_count % 15 == 0:
+                    logger.info(f"⏳ Polling for device authorization token... ({remaining}s remaining)")
+
+                try:
+                    token_response = self.sso_client.create_device_token(
+                        client_id, client_secret, authz["deviceCode"]
+                    )
+                    access_token = token_response["accessToken"]
+                    refresh_token = token_response.get("refreshToken")
+                    expires_in = token_response.get("expiresIn")
+                    break
+                except Exception as e:
+                    exc_name = e.__class__.__name__
+                    if "AuthorizationPendingException" in exc_name:
+                        poll_count += 1
+                        time.sleep(interval)
+                    elif "SlowDownException" in exc_name:
+                        poll_count += 1
+                        interval += 5
+                        time.sleep(interval)
+                    elif "ExpiredTokenException" in exc_name:
+                        raise RuntimeError("Login timed out")
+                    else:
+                        raise RuntimeError(f"Login failed: {e}")
+        finally:
+            if is_tty:
+                sys.stderr.write("\n")
+                sys.stderr.flush()
+
+        if not access_token:
+            raise RuntimeError("Device code expired before authorization")
+
+        if expires_in is None:
+            expires_in = self.config.SESSION_DURATION_SECONDS
+            logger.warning(f"AWS did not return expiresIn, using fallback: {expires_in} seconds")
+        logger.info(f"SSO login complete - token expires in {expires_in} seconds ({expires_in/3600:.1f} hours)")
+        
+        # Log refresh token status
+        if refresh_token:
+            logger.info("✅ Refresh token received - next login can skip device code if token is still valid")
+            logger.info("   (Browser cookies will still skip Microsoft authentication)")
+        else:
+            logger.warning("⚠️  No refresh token received from AWS SSO")
+            logger.warning("   Next login will require new device code (but browser cookies will skip Microsoft login)")
+        
+        self.token_manager.cache_sso_access_token(access_token, expires_in, refresh_token)
+        return access_token
     
     def _attempt_token_refresh(self) -> Optional[str]:
         """Attempt to refresh the access token using a cached refresh token."""
