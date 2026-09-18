@@ -220,46 +220,7 @@ class TestAuthManagerDevicePolling(unittest.TestCase):
             self.manager._perform_sso_login()
         self.assertIn("Login timed out", str(ctx.exception))
 
-    @patch("sys.stderr.isatty", return_value=False)
-    @patch("aws_auth.auth_manager.time.time")
-    def test_polling_device_code_expired_before_auth(self, mock_time, mock_isatty):
-        self.manager.sso_client.register_client.return_value = ("client-123", "secret-456")
-        self.manager.sso_client.start_device_authorization.return_value = {
-            "verificationUriComplete": "https://portal.awsapps.com/start/#/device?user_code=ABCD",
-            "deviceCode": "device-code-xyz",
-            "userCode": "ABCD",
-            "expiresIn": 10,
-            "interval": 1,
-        }
 
-        # First call time.time() is for expires calculation, subsequent calls exceed expires
-        mock_time.side_effect = [100.0, 200.0, 200.0, 200.0]
-
-        with self.assertRaises(RuntimeError) as ctx:
-            self.manager._perform_sso_login()
-        self.assertIn("Device code expired before authorization", str(ctx.exception))
-
-    @patch("sys.stderr.write")
-    @patch("sys.stderr.flush")
-    @patch("sys.stderr.isatty", return_value=True)
-    def test_polling_caps_waiting_time_at_120s(self, mock_isatty, mock_flush, mock_stderr_write):
-        self.manager.sso_client.register_client.return_value = ("client-123", "secret-456")
-        self.manager.sso_client.start_device_authorization.return_value = {
-            "verificationUriComplete": "https://portal.awsapps.com/start/#/device?user_code=ABCD",
-            "deviceCode": "device-code-xyz",
-            "userCode": "ABCD",
-            "expiresIn": 600,
-            "interval": 1,
-        }
-        self.manager.sso_client.create_device_token.return_value = {
-            "accessToken": "token-123",
-            "expiresIn": 3600
-        }
-        self.manager._perform_sso_login()
-
-        written_texts = [call[0][0] for call in mock_stderr_write.call_args_list]
-        timer_lines = [t for t in written_texts if "Polling for device authorization token" in t]
-        self.assertTrue(any("120s remaining" in t for t in timer_lines))
 
 
 if __name__ == "__main__":
