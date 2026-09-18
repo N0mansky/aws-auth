@@ -79,7 +79,7 @@ class TokenManager:
                     return data["clientId"], data["clientSecret"]
                 else:
                     expiry_time = datetime.fromtimestamp(client_secret_expires_at) if client_secret_expires_at > 0 else "unknown"
-                    logger.info(f"Cached client secret expired at {expiry_time}")
+                    logger.debug(f"Cached client secret expired at {expiry_time}")
         except (json.JSONDecodeError, KeyError, OSError) as e:
             logger.warning(f"Failed to load registered client: {e}")
         
@@ -131,9 +131,9 @@ class TokenManager:
         
         try:
             self._atomic_write_json(cache_entry, filename)
-            logger.info(f"Cached SSO token at: {filename}")
+            logger.debug(f"Cached SSO token at: {filename}")
             if refresh_token:
-                logger.info("Refresh token cached for future use")
+                logger.debug("Refresh token cached for future use")
             # Invalidate cache since we just added a new token
             self._token_info_cache = None
             self._token_info_cache_time = None
@@ -156,7 +156,7 @@ class TokenManager:
                 logger.debug(f"Could not remove old token file {filename}: {e}")
         
         if removed_count > 0:
-            logger.info(f"Cleaned up {removed_count} old token file(s)")
+            logger.debug(f"Cleaned up {removed_count} old token file(s)")
     
     def cleanup_expired_tokens(self, force: bool = False) -> None:
         """Remove expired token file if it exists.
@@ -186,7 +186,7 @@ class TokenManager:
                         # Invalid token file - remove it
                         os.remove(token_file)
                         removed_count += 1
-                        logger.info(f"Removed invalid token file: {token_file}")
+                        logger.debug(f"Removed invalid token file: {token_file}")
                     else:
                         expiry_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
                         if expiry_dt.tzinfo is None:
@@ -200,14 +200,14 @@ class TokenManager:
                             else:
                                 os.remove(token_file)
                                 removed_count += 1
-                                logger.info(f"Removed expired token file: {token_file}")
+                                logger.debug(f"Removed expired token file: {token_file}")
                         
             except (json.JSONDecodeError, KeyError, OSError, ValueError) as e:
                 logger.warning(f"Could not process {token_file} for cleanup: {e}")
         
         self._last_cleanup_time = time.time()
         if removed_count > 0:
-            logger.info(f"Cleaned up {removed_count} expired token file(s)")
+            logger.debug(f"Cleaned up {removed_count} expired token file(s)")
             # Invalidate cache after cleanup
             self._token_info_cache = None
             self._token_info_cache_time = None
@@ -285,12 +285,12 @@ class TokenManager:
                 
                 if not is_expired:
                     valid_token_info = token_info
-                    logger.info(f"Valid token found in {filename}, expires at {expiry_dt}")
+                    logger.debug(f"Valid token found in {filename}, expires at {expiry_dt}")
                 else:
-                    logger.info(f"Token in {filename} has expired (or within 5m safety margin) at {expiry_dt}")
+                    logger.debug(f"Token in {filename} has expired (or within 5m safety margin) at {expiry_dt}")
                     if refresh_token and expired_token_info is None:
                         expired_token_info = token_info
-                        logger.info(f"Expired token has refresh token - can be refreshed")
+                        logger.debug("Expired token has refresh token - can be refreshed")
                     
             except (json.JSONDecodeError, KeyError, OSError, ValueError) as e:
                 logger.warning(f"Could not read or parse {filename}: {e}")
@@ -300,7 +300,7 @@ class TokenManager:
         if valid_token_info:
             result = valid_token_info
         elif expired_token_info:
-            logger.info("No valid tokens found, but expired token with refresh token available for refresh attempt")
+            logger.debug("No valid tokens found, but expired token with refresh token available for refresh attempt")
             result = expired_token_info
         
         # Cache the result for future calls
@@ -315,7 +315,7 @@ class TokenManager:
         """Load a valid cached SSO token matching the given start URL."""
         token_info = self.get_token_info(sso_start_url)
         if token_info and not token_info.get('isExpired'):
-            logger.info(f"Looking for SSO token matching startUrl={sso_start_url or self.config.SSO_START_URL}")
+            logger.debug(f"Looking for SSO token matching startUrl={sso_start_url or self.config.SSO_START_URL}")
             return token_info.get('accessToken')
         return None
     
@@ -343,7 +343,7 @@ class TokenManager:
                     
                 refresh_token = data.get("refreshToken")
                 if refresh_token:
-                    logger.info(f"Found refresh token in {filename}")
+                    logger.debug(f"Found refresh token in {filename}")
                     return refresh_token
                     
             except (json.JSONDecodeError, KeyError, OSError, ValueError) as e:
@@ -421,7 +421,7 @@ class TokenManager:
                     data = json.load(f)
                     if data.get("accessToken") == invalid_token:
                         os.remove(filename)
-                        logger.info(f"Removed invalid token file: {filename}")
+                        logger.debug(f"Removed invalid token file: {filename}")
                         self._token_info_cache = None
                         self._token_info_cache_time = None
                         return

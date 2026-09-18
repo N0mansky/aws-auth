@@ -2,6 +2,7 @@
 Command-line interface for AWS SSO Authentication tool.
 """
 
+import os
 import sys
 import json
 import argparse
@@ -191,6 +192,13 @@ Examples:
         action='store_true',
         help='Enable verbose debug logging'
     )
+
+    parser.add_argument(
+        '--quiet',
+        '-q',
+        action='store_true',
+        help='Suppress informational messages, only output warnings and errors'
+    )
     
     return parser
 
@@ -240,14 +248,29 @@ def main() -> None:
     parser = create_parser()
     args = parser.parse_args()
     
-    # Configure logging level based on verbose flag
+    # Configure logging level based on verbose/quiet flags and environment
+    env_level = os.environ.get("AWS_AUTH_LOG_LEVEL", "").upper()
+    default_level = getattr(logging, env_level, logging.INFO)
+
     if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-        logging.basicConfig(level=logging.DEBUG, format='[%(asctime)s] %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S', force=True)
+        target_level = logging.DEBUG
+        fmt = '[%(asctime)s] %(levelname)s: %(message)s'
+    elif args.quiet:
+        target_level = logging.WARNING
+        fmt = '[%(asctime)s] %(message)s'
     else:
-        logging.getLogger().setLevel(logging.INFO)
-        # Suppress verbose messages from credentials_manager
+        target_level = default_level
+        fmt = '[%(asctime)s] %(message)s'
+
+    logging.getLogger().setLevel(target_level)
+    logging.basicConfig(level=target_level, format=fmt, datefmt='%Y-%m-%d %H:%M:%S', force=True)
+
+    if target_level > logging.DEBUG:
+        # Suppress internal and external verbose diagnostics in standard mode
         logging.getLogger('aws_auth.credentials_manager').setLevel(logging.WARNING)
+        logging.getLogger('botocore').setLevel(logging.WARNING)
+        logging.getLogger('boto3').setLevel(logging.WARNING)
+        logging.getLogger('urllib3').setLevel(logging.WARNING)
     
     # Sanitize process environment: purge non-existent AWS_PROFILE to protect boto3
     CredentialsManager().sanitize_environment()

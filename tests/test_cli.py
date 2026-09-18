@@ -21,6 +21,17 @@ class TestCLIParser(unittest.TestCase):
         self.assertIsNone(args.list_eks)
         self.assertEqual(args.region, "us-east-1")
         self.assertFalse(args.no_auth)
+        self.assertFalse(args.verbose)
+        self.assertFalse(args.quiet)
+
+    def test_verbose_and_quiet_arguments(self):
+        args_v = self.parser.parse_args(["--verbose"])
+        self.assertTrue(args_v.verbose)
+        self.assertFalse(args_v.quiet)
+
+        args_q = self.parser.parse_args(["-q"])
+        self.assertTrue(args_q.quiet)
+        self.assertFalse(args_q.verbose)
 
     def test_list_ec2_arguments(self):
         args = self.parser.parse_args(["--list-ec2", "--region", "us-west-2"])
@@ -79,7 +90,7 @@ class TestCLIParser(unittest.TestCase):
         self.assertTrue(args.write_default)
 
     def test_version_string(self):
-        self.assertEqual(__version__, "1.2.3")
+        self.assertEqual(__version__, "1.2.4")
 
 
 class TestUserInterfacePrompt(unittest.TestCase):

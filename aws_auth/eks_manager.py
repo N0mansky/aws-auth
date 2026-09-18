@@ -34,7 +34,7 @@ class EKSManager:
                     self.session = boto3.Session()
             
             self.eks_client = self.session.client('eks')
-            logger.info(f"EKS client initialized with profile: {self.profile_name or 'default'}")
+            logger.debug(f"EKS client initialized with profile: {self.profile_name or 'default'}")
         except Exception as e:
             logger.error(f"Failed to initialize EKS client: {e}")
             raise

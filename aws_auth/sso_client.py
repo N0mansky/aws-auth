@@ -97,7 +97,7 @@ class SSOClient:
         """Register a new OIDC client or load cached one."""
         client_id, client_secret = token_manager.load_registered_client()
         if not client_id:
-            logger.info("Registering new OIDC client...")
+            logger.debug("Registering new OIDC client...")
             
             # Prepare registration parameters according to AWS documentation
             register_params = {
@@ -127,16 +127,16 @@ class SSOClient:
                     token_endpoint=register_response.get("tokenEndpoint")
                 )
                 
-                logger.info(f"Registered client ID: {client_id}")
+                logger.debug(f"Registered client ID: {client_id}")
                 if register_response.get("clientSecretExpiresAt"):
                     expiry_time = datetime.fromtimestamp(register_response["clientSecretExpiresAt"])
-                    logger.info(f"Client secret expires at: {expiry_time}")
+                    logger.debug(f"Client secret expires at: {expiry_time}")
             except Exception as e:
                 logger.error(f"Failed to register OIDC client: {e}")
                 self._handle_register_client_exceptions(e)
                 raise
         else:
-            logger.info(f"Using cached OIDC client ID: {client_id}")
+            logger.debug(f"Using cached OIDC client ID: {client_id}")
         
         return client_id, client_secret
     
@@ -190,10 +190,10 @@ class SSOClient:
             
         try:
             response = self.oidc_client.create_token(**token_params)
-            logger.info(f"Successfully created token using {grant_type} grant type")
+            logger.debug(f"Successfully created token using {grant_type} grant type")
             
             if response.get("refreshToken"):
-                logger.info("Refresh token received and will be cached")
+                logger.debug("Refresh token received and will be cached")
                 
             return response
             

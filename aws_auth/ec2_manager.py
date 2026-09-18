@@ -95,7 +95,7 @@ class EC2Manager:
                     self.session = boto3.Session()
             
             self.ec2_client = self.session.client('ec2')
-            logger.info(f"EC2 client initialized with profile: {self.profile_name or 'default'}")
+            logger.debug(f"EC2 client initialized with profile: {self.profile_name or 'default'}")
         except Exception as e:
             logger.error(f"Failed to initialize EC2 client: {e}")
             raise

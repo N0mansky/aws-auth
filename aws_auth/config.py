@@ -37,6 +37,11 @@ class Config:
             or user_config.get("max_polling_seconds")
             or 120
         )
+        self.LOG_LEVEL = (
+            os.environ.get("AWS_AUTH_LOG_LEVEL")
+            or user_config.get("log_level")
+            or "INFO"
+        ).upper()
         
         # Client registration parameters
         self.CLIENT_TYPE = "public"

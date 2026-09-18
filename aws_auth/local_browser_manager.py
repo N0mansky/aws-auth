@@ -155,53 +155,43 @@ def open_url_in_browser(url: str) -> bool:
         return False
 
     if is_wsl():
-        logger.info("🌐 Detected WSL2 - opening Windows browser...")
+        logger.debug("Detected WSL2 - opening Windows browser...")
         if open_browser_wsl2(url):
-            logger.info("✅ Opened URL in Windows browser")
+            logger.debug("Opened URL in Windows browser")
             return True
         else:
-            logger.warning("⚠️  Failed to open Windows browser automatically")
-            logger.info("   Please manually open this URL in your browser:")
-            logger.info(f"   {format_terminal_link(url)}")
+            logger.debug("Failed to open Windows browser automatically")
             return False
     
     # Not WSL - use platform-specific method
     system = platform.system().lower()
     
     if system == 'linux':
-        logger.info("🌐 Opening Linux browser...")
+        logger.debug("Opening Linux browser...")
         if open_browser_linux(url):
-            logger.info("✅ Opened URL in browser")
+            logger.debug("Opened URL in browser")
             return True
         else:
-            logger.warning("⚠️  Failed to open browser automatically")
-            logger.info("   Please manually open this URL in your browser:")
-            logger.info(f"   {format_terminal_link(url)}")
+            logger.debug("Failed to open Linux browser automatically")
             return False
     elif system == 'darwin':
-        logger.info("🌐 Opening macOS browser...")
+        logger.debug("Opening macOS browser...")
         if open_browser_macos(url):
-            logger.info("✅ Opened URL in browser")
+            logger.debug("Opened URL in browser")
             return True
         else:
-            logger.warning("⚠️  Failed to open browser automatically")
-            logger.info("   Please manually open this URL in your browser:")
-            logger.info(f"   {format_terminal_link(url)}")
+            logger.debug("Failed to open macOS browser automatically")
             return False
     elif system == 'windows':
-        logger.info("🌐 Opening Windows browser...")
+        logger.debug("Opening Windows browser...")
         if open_browser_windows(url):
-            logger.info("✅ Opened URL in browser")
+            logger.debug("Opened URL in browser")
             return True
         else:
-            logger.warning("⚠️  Failed to open browser automatically")
-            logger.info("   Please manually open this URL in your browser:")
-            logger.info(f"   {format_terminal_link(url)}")
+            logger.debug("Failed to open Windows browser automatically")
             return False
     else:
-        logger.warning(f"⚠️  Unsupported platform: {system}")
-        logger.info("   Please manually open this URL in your browser:")
-        logger.info(f"   {format_terminal_link(url)}")
+        logger.debug(f"Unsupported platform for auto-launch: {system}")
         return False
 
 
@@ -214,38 +204,20 @@ class LocalBrowserManager:
     def perform_sso_login(self, aws_sso_url: str, **kwargs) -> None:
         """Open device authorization URL in local browser.
         
-        This is similar to AWS CLI's approach: just open the URL and let the user
-        complete authentication in their browser. The browser will use existing
-        cookies/sessions, so Microsoft authentication is often skipped.
-        
         Args:
             aws_sso_url: The device authorization URL (verificationUriComplete)
-            **kwargs: Ignored (kept for compatibility)
+            **kwargs: Ignored (kept for compatibility, may include user_code)
         """
-        logger.info("🌐 Using local browser for authentication (like AWS CLI)...")
-        logger.info("   Your browser will open with the device authorization URL")
-        logger.info("   Complete authentication in your browser - it will use your existing cookies/sessions")
-        logger.info("   After authentication, you'll see 'You can close this window' - then return here")
+        logger.debug("Opening browser for AWS SSO authentication...")
+        user_code = kwargs.get("user_code")
         
         # Open the URL in the user's browser
         if open_url_in_browser(aws_sso_url):
-            logger.info("")
-            logger.info("=" * 70)
-            logger.info("⏳ Waiting for you to complete authentication in the browser...")
-            logger.info("   After you see 'You can close this window', authentication is complete")
-            logger.info("   The polling will automatically detect completion")
-            logger.info("=" * 70)
-        else:
-            user_code = kwargs.get("user_code")
-            logger.info("")
-            logger.info("=" * 70)
-            logger.info("📋 Please complete authentication:")
-            logger.info("   1. Open this URL in your browser:")
-            logger.info(f"      {format_terminal_link(aws_sso_url)}")
+            logger.info(f"🌐 Opened browser for authentication: {format_terminal_link(aws_sso_url)}")
             if user_code:
-                logger.info(f"   2. Confirm user code: {user_code}")
-                logger.info("   3. After you see 'You can close this window', return here")
-            else:
-                logger.info("   2. Complete the authentication (browser will use your cookies)")
-                logger.info("   3. After you see 'You can close this window', return here")
-            logger.info("=" * 70)
+                logger.info(f"   Confirm user code: {user_code}")
+        else:
+            logger.info("📋 Please complete authentication in your browser:")
+            logger.info(f"   Visit: {format_terminal_link(aws_sso_url)}")
+            if user_code:
+                logger.info(f"   Code:  {user_code}")

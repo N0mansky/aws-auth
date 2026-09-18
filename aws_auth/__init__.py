@@ -15,7 +15,7 @@ from .profile_manager import ProfileManager
 from .ec2_manager import EC2Manager
 from .eks_manager import EKSManager
 
-__version__ = "1.2.3"
+__version__ = "1.2.4"
 __author__ = "N0mansky"
 
 __all__ = [

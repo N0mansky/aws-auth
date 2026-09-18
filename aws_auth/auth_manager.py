@@ -66,53 +66,36 @@ class AuthManager:
             # This optimization avoids unnecessary API calls for recently cached tokens
             if not is_expired:
                 # Trust cached expiration time - skip validation for performance
-                # Token validation is expensive (API call) and expiration time is reliable
-                logger.info("Reusing cached valid access token")
+                logger.debug("Reusing cached valid access token")
                 return access_token
             
             # Token is expired or invalid - try to refresh if refresh token is available
             if is_expired and has_refresh_token:
-                logger.info("🔄 Cached token is expired, attempting to refresh using refresh token...")
-                logger.info("   (This will skip device code generation and browser authentication)")
+                logger.info("🔄 Cached token is expired, attempting to refresh...")
                 refreshed_token = self._attempt_token_refresh()
                 if refreshed_token:
-                    logger.info("✅ Successfully refreshed access token (no device code needed!)")
+                    logger.info("✅ Successfully refreshed access token")
                     return refreshed_token
                 else:
-                    logger.info("⚠️  Token refresh failed, refresh token may be invalid or expired")
-                    logger.info("   Falling back to device code flow...")
-                    # Remove invalid token to prevent retrying with same refresh token
+                    logger.debug("Token refresh failed, falling back to device authorization flow...")
                     self.token_manager.remove_invalid_token(access_token)
             elif is_expired:
-                logger.info("⚠️  Token is expired and no refresh token available")
-                logger.info("   Reason: AWS SSO may not have provided a refresh token, or it expired")
-                logger.info("   Will need to generate new device code (browser will use your existing cookies/sessions)")
-                # Remove expired token without refresh token
+                logger.debug("Token is expired and no refresh token available")
                 self.token_manager.remove_invalid_token(access_token)
         
         # No valid token or refresh failed - perform fresh login
-        logger.info("🔐 Performing fresh SSO login...")
-        logger.info("   Your browser will open - complete authentication there (uses your cookies/sessions)")
+        logger.info("🔐 Starting AWS SSO authentication...")
         return self._perform_sso_login(username, password)
     
     def _perform_sso_login(self, username: Optional[str] = None, password: Optional[str] = None) -> str:
         """Perform SSO login and return access token."""
-        # For local browser, we don't need credentials upfront
-        # User will authenticate in their browser using existing cookies/sessions
-        # Keep username/password params for compatibility but they're not used
-        
         # Register OIDC client
         client_id, client_secret = self.sso_client.register_client(self.token_manager)
         
         # Use device code flow (standard for CLI tools)
-        logger.info("🔐 Starting AWS SSO device authorization...")
-        logger.info("   Your browser will open - complete authentication there (uses your cookies/sessions)")
         authz = self.sso_client.start_device_authorization(client_id, client_secret)
-        url = authz.get("verificationUriComplete") or authz.get("verificationUri", "N/A")
-        logger.info(f"   Device code: {authz.get('userCode', 'N/A')}")
-        logger.info(f"   Visit: {format_terminal_link(url)}")
         
-        # Perform browser login (opens local browser)
+        # Perform browser login (opens local browser or provides manual instructions)
         self.browser_manager.perform_sso_login(
             authz["verificationUriComplete"],
             user_code=authz.get("userCode")
@@ -177,15 +160,14 @@ class AuthManager:
         if expires_in is None:
             expires_in = self.config.SESSION_DURATION_SECONDS
             logger.warning(f"AWS did not return expiresIn, using fallback: {expires_in} seconds")
-        logger.info(f"SSO login complete - token expires in {expires_in} seconds ({expires_in/3600:.1f} hours)")
+        logger.info("✅ SSO authentication successful")
+        logger.debug(f"Token expires in {expires_in} seconds ({expires_in/3600:.1f} hours)")
         
-        # Log refresh token status
+        # Log refresh token status at debug level
         if refresh_token:
-            logger.info("✅ Refresh token received - next login can skip device code if token is still valid")
-            logger.info("   (Browser cookies will still skip Microsoft authentication)")
+            logger.debug("Refresh token received and cached")
         else:
-            logger.warning("⚠️  No refresh token received from AWS SSO")
-            logger.warning("   Next login will require new device code (but browser cookies will skip Microsoft login)")
+            logger.debug("No refresh token received from AWS SSO")
         
         self.token_manager.cache_sso_access_token(access_token, expires_in, refresh_token)
         return access_token
@@ -211,7 +193,7 @@ class AuthManager:
                 return None
             
             # Attempt to refresh the token
-            logger.info("Attempting to refresh access token...")
+            logger.debug("Attempting to refresh access token...")
             token_response = self.sso_client.refresh_access_token(
                 client_id, client_secret, refresh_token
             )
@@ -224,7 +206,7 @@ class AuthManager:
                 expires_in = self.config.SESSION_DURATION_SECONDS
                 logger.warning(f"AWS did not return expiresIn during refresh, using fallback: {expires_in} seconds")
             
-            logger.info(f"Token refreshed successfully - expires in {expires_in} seconds ({expires_in/3600:.1f} hours)")
+            logger.debug(f"Token refreshed successfully - expires in {expires_in} seconds ({expires_in/3600:.1f} hours)")
             self.token_manager.cache_sso_access_token(access_token, expires_in, new_refresh_token)
             
             # Clean up old expired token files after successful refresh (force cleanup)
@@ -233,13 +215,13 @@ class AuthManager:
             return access_token
             
         except self.sso_client.oidc_client.exceptions.InvalidGrantException as e:
-            logger.info(f"Token refresh failed: Refresh token is invalid or expired - {e}")
+            logger.debug(f"Token refresh failed: Refresh token is invalid or expired - {e}")
             return None
         except self.sso_client.oidc_client.exceptions.ExpiredTokenException as e:
-            logger.info(f"Token refresh failed: Refresh token has expired - {e}")
+            logger.debug(f"Token refresh failed: Refresh token has expired - {e}")
             return None
         except Exception as e:
-            logger.info(f"Token refresh failed: {e}")
+            logger.debug(f"Token refresh failed: {e}")
             return None
     
     def assume_role_via_sso(
@@ -259,7 +241,7 @@ class AuthManager:
             cached_data = self.token_manager.load_cached_accounts_and_roles()
             if cached_data:
                 accounts, all_account_roles = cached_data
-                logger.info("Using cached accounts and roles list (use --refresh-cache to update)")
+                logger.debug("Using cached accounts and roles list (use --refresh-cache to update)")
         
         if not accounts or not all_account_roles:
             # Get available accounts
